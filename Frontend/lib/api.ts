@@ -17,7 +17,7 @@ const conversationMap: Record<string, string> = {
 
   // help
   'help': 'Sure! I can answer questions, have a conversation, or assist with tasks. What do you need?',
-  'what can you do ?': 'I can chat with you, answer questions, and help you think through problems!',
+  'what can you do?': 'I can chat with you, answer questions, and help you think through problems!',
 
   // thanks
   'thanks': 'You are welcome! Anything else I can help with?',

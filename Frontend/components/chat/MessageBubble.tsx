@@ -10,13 +10,23 @@ export default function MessageBubble({ role, content }: Props) {
   const isUser = role === 'user'
 
   return (
-    <div className={`flex flex-col gap-1 
-      ${isUser ? 'items-end' : 'items-start'}`}>
-      <span className="text-xs text-gray-400 px-1">
+    <div className={`flex gap-3 items-start 
+      ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+      
+      {/* Avatar */}
+      <div className={`w-8 h-8 rounded-full flex items-center 
+        justify-center text-xs font-semibold shrink-0 mt-1
+        ${isUser 
+          ? 'bg-indigo-600 text-white' 
+          : 'bg-gray-800 text-white'
+        }`}>
         {isUser ? 'You' : 'AI'}
-      </span>
-      <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm 
-        leading-relaxed ${isUser
+      </div>
+
+      {/* Message */}
+      <div className={`max-w-[75%] px-4 py-3 rounded-2xl 
+        text-sm leading-relaxed
+        ${isUser
           ? 'bg-indigo-600 text-white rounded-tr-sm'
           : 'bg-gray-100 text-gray-800 rounded-tl-sm'
         }`}>
