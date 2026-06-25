@@ -1,0 +1,376 @@
+# AI Chatbot — Frontend Cursor Rules (Day 1)
+
+## What we are building today
+1. Login page
+2. Register page
+3. Protected chat route
+4. Chat page (message bubbles + input + loading state)
+5. API calls (mocked for now — real backend connects tomorrow)
+
+---
+
+## Tech Stack (Frontend Only Today)
+- Next.js 16 — App Router only, no Pages Router
+- React 19
+- Tailwind CSS 4
+- TypeScript (strict mode)
+- NO external component libraries — build everything with Tailwind
+
+---
+
+## Folder Structure
+
+```
+frontend/
+├── app/
+│   ├── layout.tsx              # Root layout
+│   ├── page.tsx                # Redirects to /login
+│   ├── globals.css             # Tailwind 4 import
+│   ├── (auth)/
+│   │   ├── login/
+│   │   │   └── page.tsx        # Login page
+│   │   └── register/
+│   │       └── page.tsx        # Register page
+│   └── chat/
+│       └── page.tsx            # Chat page (protected)
+├── components/
+│   ├── auth/
+│   │   ├── LoginForm.tsx       # Login form component
+│   │   └── RegisterForm.tsx    # Register form component
+│   └── chat/
+│       ├── ChatWindow.tsx      # Scrollable message list
+│       ├── MessageBubble.tsx   # Single message (user or AI)
+│       └── MessageInput.tsx    # Text input + send button
+├── lib/
+│   ├── auth.ts                 # login(), register(), logout(), getToken()
+│   └── api.ts                  # sendMessage(), getMessages() — mocked today
+├── hooks/
+│   └── useAuth.ts              # useAuth hook — reads token, redirects if missing
+├── types/
+│   └── index.ts                # All TypeScript types
+└── middleware.ts               # Route protection (redirects /chat to /login)
+```
+
+---
+
+## TypeScript Types
+> Always import from `@/types` — never redefine types inline
+
+```typescript
+// types/index.ts
+
+export type Role = 'user' | 'assistant'
+
+export interface Message {
+  id: string
+  role: Role
+  content: string
+  createdAt: string
+}
+
+export interface User {
+  id: string
+  email: string
+  username: string
+}
+
+export interface AuthResponse {
+  accessToken: string
+  user: User
+}
+
+export interface ChatSession {
+  id: string
+  title: string
+  createdAt: string
+}
+```
+
+---
+
+## Tailwind CSS 4 Rules
+> CRITICAL — Tailwind 4 syntax is different from v3
+
+```css
+/* globals.css — use this exact syntax */
+@import "tailwindcss";
+```
+
+NEVER use the old v3 syntax:
+```css
+/* WRONG — do not use this */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+- Use Tailwind utility classes only — no inline styles, no CSS modules
+- Dark mode class: `dark:` prefix works as normal
+- Custom colors go in `@theme` block inside globals.css if needed
+
+---
+
+## Next.js 16 App Router Rules
+
+### Server vs Client components
+- Every component is a Server Component by default — do NOT add `"use client"` unless needed
+- Add `"use client"` ONLY when the component uses:
+  - `useState`, `useEffect`, `useReducer`, `useRef` or any hook
+  - Event handlers like `onClick`, `onChange`, `onSubmit`
+  - Browser APIs (`localStorage`, `window`, `document`)
+  - The `useAuth` hook
+
+### Routing
+- `app/(auth)/login/page.tsx` — the `(auth)` folder is a route group, does NOT appear in URL
+- `app/chat/page.tsx` — protected, redirects to `/login` if no token
+- `app/page.tsx` — root page, just redirects to `/login`
+
+### Data fetching
+- Server Components fetch data directly (no useEffect)
+- Client Components use `useState` + `useEffect` for data that changes
+
+---
+
+## Auth — How it works today (Simple Version)
+
+### Storage
+- Store JWT token in `localStorage` with key `"chatbot_token"`
+- Store user object in `localStorage` with key `"chatbot_user"`
+- This is good enough for today — httpOnly cookies come later
+
+### lib/auth.ts
+```typescript
+const TOKEN_KEY = 'chatbot_token'
+const USER_KEY = 'chatbot_user'
+
+export function getToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export function getUser(): User | null {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(USER_KEY)
+  return raw ? JSON.parse(raw) : null
+}
+
+export function saveAuth(token: string, user: User): void {
+  localStorage.setItem(TOKEN_KEY, token)
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
+}
+
+export function clearAuth(): void {
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
+}
+
+// MOCKED today — replace with real fetch() tomorrow
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  await new Promise(r => setTimeout(r, 800)) // fake loading
+  if (email === 'test@test.com' && password === 'password123') {
+    return {
+      accessToken: 'mock-jwt-token-abc123',
+      user: { id: '1', email, username: 'testuser' }
+    }
+  }
+  throw new Error('Invalid email or password')
+}
+
+// MOCKED today — replace with real fetch() tomorrow
+export async function register(email: string, username: string, password: string): Promise<AuthResponse> {
+  await new Promise(r => setTimeout(r, 800))
+  return {
+    accessToken: 'mock-jwt-token-abc123',
+    user: { id: '1', email, username }
+  }
+}
+
+export function logout(): void {
+  clearAuth()
+  window.location.href = '/login'
+}
+```
+
+### hooks/useAuth.ts
+```typescript
+'use client'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { getToken, getUser } from '@/lib/auth'
+import type { User } from '@/types'
+
+export function useAuth() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+
+  useEffect(() => {
+    const token = getToken()
+    const savedUser = getUser()
+    if (!token || !savedUser) {
+      router.replace('/login')
+    } else {
+      setUser(savedUser)
+    }
+    setLoading(false)
+  }, [router])
+
+  return { user, loading }
+}
+```
+
+### middleware.ts (route protection)
+```typescript
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+// NOTE: middleware runs on the server — cannot read localStorage
+// We rely on useAuth hook for client-side redirect for now
+// This middleware just handles the root redirect
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  if (pathname === '/') {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/']
+}
+```
+
+---
+
+## API — Mocked Today
+
+```typescript
+// lib/api.ts
+import type { Message } from '@/types'
+
+// MOCKED — replace with real fetch() calls tomorrow
+// Real endpoint will be: POST http://localhost:8000/api/messages/{sessionId}
+
+const MOCK_SESSION_ID = 'session-001'
+
+const mockHistory: Message[] = []
+
+export async function sendMessage(content: string): Promise<Message> {
+  await new Promise(r => setTimeout(r, 1200)) // fake Gemini delay
+
+  const aiReplies = [
+    'That\'s a great question! Let me think about that...',
+    'Interesting! Here\'s what I know about that topic.',
+    'I understand what you\'re asking. Here\'s my response.',
+    'Good point! Based on my knowledge, I would say...',
+  ]
+
+  const reply = aiReplies[Math.floor(Math.random() * aiReplies.length)]
+
+  return {
+    id: Date.now().toString(),
+    role: 'assistant',
+    content: reply,
+    createdAt: new Date().toISOString()
+  }
+}
+
+export async function getMessages(): Promise<Message[]> {
+  await new Promise(r => setTimeout(r, 300))
+  return mockHistory  // empty on first load — fine for today
+}
+
+export { MOCK_SESSION_ID }
+```
+
+---
+
+## Component Rules
+
+### MessageBubble.tsx
+- User messages: aligned right, colored background (e.g. blue/indigo)
+- AI messages: aligned left, neutral background (gray)
+- Show sender label above each bubble ("You" or "AI")
+- No avatars needed today
+
+### ChatWindow.tsx
+- Scrollable container — use `overflow-y-auto` with a fixed height
+- Auto-scroll to bottom when new message arrives — use `useEffect` + `useRef`
+- Show a centered loading spinner when AI is thinking
+- Map over messages array and render `<MessageBubble />` for each
+
+### MessageInput.tsx
+- Textarea (not input) so user can type long messages
+- Send button on the right
+- Disable both textarea and button while AI is loading
+- Submit on button click OR Ctrl+Enter keyboard shortcut
+- Clear input after sending
+- Show character count — warn if over 1000 chars
+
+### LoginForm.tsx / RegisterForm.tsx
+- Controlled inputs with `useState`
+- Show inline error message below each field
+- Show a general error (e.g. "Invalid credentials") above the submit button
+- Disable the submit button while loading
+- Show a spinner inside the button while loading
+- After successful login → `router.push('/chat')`
+
+---
+
+## UI Design Rules
+
+- Keep it simple and clean — this is not a portfolio piece today, it's a working prototype
+- Color scheme: white background, indigo/blue for primary actions, gray for secondary
+- User message bubble: `bg-indigo-600 text-white` aligned right
+- AI message bubble: `bg-gray-100 text-gray-800` aligned left
+- Font: default Tailwind sans — no custom fonts today
+- Spacing: generous padding on all containers — `p-4` or `p-6`
+- No animations or transitions today — add later
+- Mobile layout is not a priority today — desktop first
+
+---
+
+## Error Handling Rules
+
+- Every async function must have try/catch
+- Show errors to the user — never silently swallow them
+- If Gemini (mocked) fails — show "Something went wrong. Please try again." in the chat
+- If login fails — show the error message from the thrown Error
+- Console.error is okay during development — remove before production
+
+---
+
+## What NOT to build today
+
+- Do NOT build a sessions sidebar — one session per user is enough
+- Do NOT add markdown rendering for AI responses — plain text only
+- Do NOT add file uploads
+- Do NOT add dark mode toggle — focus on core functionality
+- Do NOT spend time on animations
+- Do NOT build a user settings or profile page
+- Do NOT implement token refresh logic — single access token is fine today
+
+---
+
+## How to run
+
+```bash
+cd frontend
+npm install
+npm run dev
+# opens at http://localhost:3000
+```
+
+Test login with:
+- Email: `test@test.com`
+- Password: `password123`
+
+---
+
+## Tomorrow (Backend Day)
+When backend is ready, replace mocks in:
+- `lib/auth.ts` → `login()` and `register()` functions
+- `lib/api.ts` → `sendMessage()` and `getMessages()` functions
+
+Real API base URL will be: `http://localhost:8000`

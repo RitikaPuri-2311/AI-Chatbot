@@ -16,7 +16,7 @@ export default function ChatWindow({ messages, isLoading }: Props) {
   }, [messages, isLoading])
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4">
+    <div className="flex-1 overflow-y-auto px-4 py-6 flex flex-col gap-4 bg-white dark:bg-gray-900">
       {messages.length === 0 && !isLoading && (
         <div className="flex items-center justify-center h-full">
           <p className="text-gray-400 text-sm">

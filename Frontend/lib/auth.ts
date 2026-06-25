@@ -24,18 +24,22 @@ export function clearAuth(): void {
   localStorage.removeItem(USER_KEY)
 }
 
+const API_URL = 'http://localhost:8000'
+
 export async function login(
   email: string,
   password: string
 ): Promise<AuthResponse> {
-  await new Promise(r => setTimeout(r, 800))
-  if (email === 'test@test.com' && password === 'password123') {
-    return {
-      accessToken: 'mock-jwt-token-abc123',
-      user: { id: '1', email, username: 'testuser' }
-    }
+  const res = await fetch(`${API_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  })
+  if (!res.ok) {
+    const error = await res.json()
+    throw new Error(error.detail ?? 'Login failed')
   }
-  throw new Error('Invalid email or password')
+  return res.json()
 }
 
 export async function register(
@@ -43,14 +47,16 @@ export async function register(
   username: string,
   password: string
 ): Promise<AuthResponse> {
-  await new Promise(r => setTimeout(r, 800))
-  if (!email || !username || !password) {
-    throw new Error('All fields are required')
+  const res = await fetch(`${API_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, username, password })
+  })
+  if (!res.ok) {
+    const error = await res.json()
+    throw new Error(error.detail ?? 'Registration failed')
   }
-  return {
-    accessToken: 'mock-jwt-token-abc123',
-    user: { id: '1', email, username }
-  }
+  return res.json()
 }
 
 export function logout(): void {

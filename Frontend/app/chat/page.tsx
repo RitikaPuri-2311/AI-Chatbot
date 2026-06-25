@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useTheme } from '@/components/ThemeProvider'
 import { sendMessage, getMessages } from '@/lib/api'
 import { logout } from '@/lib/auth'
 import ChatWindow from '@/components/chat/ChatWindow'
@@ -9,6 +10,7 @@ import type { Message } from '@/types'
 
 export default function ChatPage() {
   const { user, loading } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
@@ -52,7 +54,7 @@ export default function ChatPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center 
-        justify-center bg-gray-50">
+        justify-center bg-gray-50 dark:bg-gray-950">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-indigo-600 
             border-t-transparent rounded-full animate-spin"/>
@@ -63,19 +65,21 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
-      
+    <div className="flex h-screen bg-white dark:bg-gray-900 
+      overflow-hidden">
+
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 flex flex-col 
-        shrink-0">
-        
+      <aside className="w-64 bg-gray-900 dark:bg-gray-950 
+        flex flex-col shrink-0">
+
         {/* Logo */}
-        <div className="px-4 py-5 border-b border-gray-700">
+        <div className="px-4 py-5 border-b border-gray-700 
+          dark:border-gray-800">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-indigo-600 rounded-lg 
               flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" 
-                viewBox="0 0 24 24" fill="currentColor" 
+              <svg xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24" fill="currentColor"
                 className="w-4 h-4 text-white">
                 <path d="M4.913 2.658c2.075-.27 4.19-.408 
                 6.337-.408 2.147 0 4.262.139 6.337.408 
@@ -112,8 +116,8 @@ export default function ChatPage() {
             transition-colors border border-gray-600 
             hover:border-gray-500"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" 
-              viewBox="0 0 24 24" fill="currentColor" 
+            <svg xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24" fill="currentColor"
               className="w-4 h-4">
               <path fillRule="evenodd" d="M12 3.75a.75.75 
               0 01.75.75v6.75h6.75a.75.75 0 010 
@@ -129,7 +133,8 @@ export default function ChatPage() {
         <div className="flex-1" />
 
         {/* User + Logout */}
-        <div className="px-3 py-4 border-t border-gray-700">
+        <div className="px-3 py-4 border-t border-gray-700
+          dark:border-gray-800">
           <div className="flex items-center gap-3 px-2 py-2 
             rounded-lg hover:bg-gray-700 transition-colors">
             <div className="w-7 h-7 bg-indigo-600 rounded-full 
@@ -147,8 +152,8 @@ export default function ChatPage() {
               className="text-gray-500 hover:text-red-400 
               transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" 
-                viewBox="0 0 24 24" fill="currentColor" 
+              <svg xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24" fill="currentColor"
                 className="w-4 h-4">
                 <path fillRule="evenodd" d="M7.5 3.75A1.5 
                 1.5 0 006 5.25v13.5a1.5 1.5 0 001.5 
@@ -169,28 +174,56 @@ export default function ChatPage() {
 
       {/* Main chat area */}
       <main className="flex-1 flex flex-col min-w-0">
-        
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 
-          bg-white">
-          <h1 className="text-sm font-medium text-gray-700">
-            New Conversation
-          </h1>
-          <p className="text-xs text-gray-400">
-            Powered by AI
-          </p>
+          dark:border-gray-700 bg-white dark:bg-gray-900
+          flex items-center justify-between">
+          <div>
+            <h1 className="text-sm font-medium text-gray-700 
+              dark:text-gray-200">
+              New Conversation
+            </h1>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Powered by AI
+            </p>
+          </div>
+
+          {/* Dark mode toggle */}
+          <button
+            onClick={toggleTheme}
+            className="text-gray-500 dark:text-gray-400 
+            hover:text-gray-700 dark:hover:text-gray-200 
+            transition-colors p-2 rounded-lg 
+            hover:bg-gray-100 dark:hover:bg-gray-800"
+            title="Toggle dark mode"
+          >
+            {theme === 'light' ? (
+              <svg xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24" fill="currentColor"
+                className="w-5 h-5">
+                <path fillRule="evenodd" d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 003.463-.69.75.75 0 01.981.98 10.503 10.503 0 01-9.694 6.46c-5.799 0-10.5-4.701-10.5-10.5 0-4.368 2.667-8.112 6.46-9.694a.75.75 0 01.818.162z" clipRule="evenodd" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24" fill="currentColor"
+                className="w-5 h-5">
+                <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.303a.75.75 0 00-1.061-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.697 7.757a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z" />
+              </svg>
+            )}
+          </button>
         </div>
 
         {/* Chat */}
-        <ChatWindow 
-          messages={messages} 
-          isLoading={isLoading} 
+        <ChatWindow
+          messages={messages}
+          isLoading={isLoading}
         />
 
         {/* Input */}
-        <MessageInput 
-          onSend={handleSend} 
-          isLoading={isLoading} 
+        <MessageInput
+          onSend={handleSend}
+          isLoading={isLoading}
         />
       </main>
     </div>

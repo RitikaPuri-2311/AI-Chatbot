@@ -1,5 +1,6 @@
 'use client'
 import type { Role } from '@/types'
+import ReactMarkdown from 'react-markdown'
 
 interface Props {
   role: Role
@@ -18,7 +19,7 @@ export default function MessageBubble({ role, content }: Props) {
         justify-center text-xs font-semibold shrink-0 mt-1
         ${isUser 
           ? 'bg-indigo-600 text-white' 
-          : 'bg-gray-800 text-white'
+          : 'bg-gray-800 dark:bg-gray-600 text-white'
         }`}>
         {isUser ? 'You' : 'AI'}
       </div>
@@ -28,9 +29,52 @@ export default function MessageBubble({ role, content }: Props) {
         text-sm leading-relaxed
         ${isUser
           ? 'bg-indigo-600 text-white rounded-tr-sm'
-          : 'bg-gray-100 text-gray-800 rounded-tl-sm'
+          : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-tl-sm'
         }`}>
-        {content}
+        {isUser ? (
+          content
+        ) : (
+          <ReactMarkdown
+            components={{
+              p: ({ children }) => (
+                <p className="mb-2 last:mb-0">{children}</p>
+              ),
+              strong: ({ children }) => (
+                <strong className="font-semibold">{children}</strong>
+              ),
+              ul: ({ children }) => (
+                <ul className="list-disc list-inside mb-2 space-y-1">
+                  {children}
+                </ul>
+              ),
+              ol: ({ children }) => (
+                <ol className="list-decimal list-inside mb-2 space-y-1">
+                  {children}
+                </ol>
+              ),
+              li: ({ children }) => (
+                <li className="text-sm">{children}</li>
+              ),
+              code: ({ children }) => (
+                <code className="bg-gray-200 dark:bg-gray-700 
+                  text-gray-800 dark:text-gray-100
+                  px-1 py-0.5 rounded text-xs font-mono">
+                  {children}
+                </code>
+              ),
+              pre: ({ children }) => (
+                <pre className="bg-gray-200 dark:bg-gray-700 
+                  text-gray-800 dark:text-gray-100
+                  p-3 rounded-lg text-xs font-mono 
+                  overflow-x-auto mt-2 mb-2">
+                  {children}
+                </pre>
+              ),
+            }}
+          >
+            {content}
+          </ReactMarkdown>
+        )}
       </div>
     </div>
   )

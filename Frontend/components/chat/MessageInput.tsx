@@ -25,13 +25,13 @@ export default function MessageInput({ onSend, isLoading }: Props) {
   }
 
   return (
-    <div className="border-t border-gray-100 bg-white px-6 py-4">
+    <div className="border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 px-6 py-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-end gap-3 bg-gray-50 
-          border border-gray-200 rounded-2xl px-4 py-3 
-          shadow-sm focus-within:border-indigo-400 
-          focus-within:ring-2 focus-within:ring-indigo-100
-          transition-all">
+      <div className="flex items-end gap-3 bg-gray-50 
+      dark:bg-gray-800 border border-gray-200 
+      dark:border-gray-600 rounded-2xl px-4 py-3 
+      shadow-sm focus-within:border-indigo-400 
+      transition-all">
           <textarea
             value={value}
             onChange={e => setValue(e.target.value)}
@@ -40,8 +40,9 @@ export default function MessageInput({ onSend, isLoading }: Props) {
             rows={1}
             placeholder="Message AI... (Shift+Enter for new line)"
             className="flex-1 bg-transparent text-sm text-gray-800 
-            resize-none focus:outline-none disabled:opacity-50
-            placeholder:text-gray-400 max-h-40 overflow-y-auto"
+            dark:text-gray-100 resize-none focus:outline-none 
+            disabled:opacity-50 placeholder:text-gray-400 
+            dark:placeholder:text-gray-500 max-h-40 overflow-y-auto"
             style={{ minHeight: '24px' }}
           />
           <div className="flex items-center gap-2 shrink-0">
