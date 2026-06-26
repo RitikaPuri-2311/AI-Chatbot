@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+from app.database import get_db
+from app.dependencies import get_current_user
 from app.services.auth_service import (
-    register_user, login_user, 
-    create_access_token, decode_token,
-    get_user_by_email
+    register_user, login_user,
+    create_access_token
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-security = HTTPBearer()
 
 class RegisterRequest(BaseModel):
     email: str
@@ -19,56 +19,53 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    token = credentials.credentials
-    payload = decode_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    email = payload.get("sub")
-    user = get_user_by_email(email)
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
-
 @router.post("/register")
-def register(body: RegisterRequest):
+async def register(
+    body: RegisterRequest,
+    db: AsyncSession = Depends(get_db)
+):
     try:
-        user = register_user(body.email, body.username, body.password)
-        token = create_access_token({"sub": user["email"]})
+        user = await register_user(
+            db, body.email, body.username, body.password
+        )
+        token = create_access_token({"sub": user.email})
         return {
             "accessToken": token,
             "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "username": user["username"]
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "permissions": user.permissions
             }
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/login")
-def login(body: LoginRequest):
+async def login(
+    body: LoginRequest,
+    db: AsyncSession = Depends(get_db)
+):
     try:
-        user = login_user(body.email, body.password)
-        token = create_access_token({"sub": user["email"]})
+        user = await login_user(db, body.email, body.password)
+        token = create_access_token({"sub": user.email})
         return {
             "accessToken": token,
             "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "username": user["username"]
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "permissions": user.permissions
             }
         }
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
 @router.get("/me")
-def me(current_user: dict = Depends(get_current_user)):
+async def me(current_user=Depends(get_current_user)):
     return {
-        "id": current_user["id"],
-        "email": current_user["email"],
-        "username": current_user["username"]
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "permissions": current_user.permissions
     }
