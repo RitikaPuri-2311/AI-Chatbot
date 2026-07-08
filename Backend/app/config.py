@@ -13,5 +13,7 @@ class Settings:
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     )
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    REDIS_TTL: int = int(os.getenv("REDIS_TTL", "86400"))
 
 settings = Settings()

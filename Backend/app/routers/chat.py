@@ -13,6 +13,7 @@ from app.services.gemini_service import (
 )
 from app.models.session import ChatSession as ChatSessionModel
 from app.models.message import Message as MessageModel
+from app.services.redis_service import delete_session as redis_delete
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -152,8 +153,13 @@ async def delete_session(
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
     await db.delete(session)
     await db.commit()
+
+    # Clear Redis cache for this session
+    redis_delete(session_id)
+
     return {"message": "Session deleted"}
 
 @router.get("/history/{session_id}")
