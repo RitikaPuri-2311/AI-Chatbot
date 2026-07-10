@@ -1,5 +1,5 @@
 """
-Intent classification and session-context resolution for the document agent.
+Intent classification and session-context resolution for the customer support agent.
 
 Uses an LLM classifier (Gemini) to route between:
   normal_chat | single_document | multi_document | compare | metadata
@@ -15,8 +15,11 @@ from google import genai
 from google.genai import types
 
 from app.config import settings
+from app.graph.prompts import build_classifier_prompt
 from app.graph.state import AgentState, QueryMode
 from app.services.rag_service import list_user_documents
+from app.services.company_faq import is_company_policy_question
+from app.services.support_tools import is_support_request
 
 client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 CLASSIFIER_MODEL = "gemini-2.0-flash"
@@ -35,6 +38,8 @@ INTENT_TO_MODE: dict[str, QueryMode] = {
     "compare_documents": "compare",
     "compare": "compare",
     "metadata": "metadata",
+    "support": "support",
+    "company_faq": "company_faq",
 }
 
 
@@ -65,7 +70,7 @@ def resolve_active_document_id(state: AgentState) -> Optional[str]:
     for msg in reversed(state.get("conversation_history", [])):
         text = msg.get("parts", [""])[0]
         focus_match = re.search(
-            r"\[Context: Focus on document ([0-9a-f-]{36})\]",
+            r"\[Context: Focus on (?:knowledge base article|document) ([0-9a-f-]{36})\]",
             text,
             re.IGNORECASE,
         )
@@ -170,10 +175,6 @@ def resolve_compare_document_ids(state: AgentState) -> list[str]:
         if len(collected) >= 2:
             break
 
-    active = resolve_active_document_id(state)
-    if active and active not in collected:
-        collected.insert(0, active)
-
     if len(collected) < 2 and state.get("user_id"):
         return resolve_compare_document_ids_from_names(
             state["user_id"],
@@ -203,31 +204,13 @@ async def classify_query_mode_llm(state: AgentState) -> dict:
     active_doc = resolve_active_document_id(state)
     compare_ids = resolve_compare_document_ids(state)
 
-    prompt = f"""You are an intent classifier for a document analysis chatbot.
-Classify the user's latest message into exactly ONE intent.
-
-Intents:
-- normal_chat: greetings, thanks, small talk, or general chat not about documents
-- single_document_search: question about content in ONE specific document
-- multi_document_search: question that should search across ALL uploaded documents
-- compare_documents: user wants to compare two documents
-- metadata: user asks about document info, page count, or page list (not content)
-
-Context:
-- Request document_id: {state.get("document_id") or "none"}
-- Active document_id: {active_doc or "none"}
-- Known compare document_ids: {compare_ids or "none"}
-- Recent conversation:
-{_history_summary(state)}
-
-User message: {state.get("user_message", "")}
-
-Respond with ONLY valid JSON (no markdown):
-{{
-  "intent": "<one of the intent names above>",
-  "compare_document_ids": ["id1", "id2"] or [],
-  "metadata_action": "list_pages" or "get_document_info" or null
-}}"""
+    prompt = build_classifier_prompt(
+        document_id=state.get("document_id"),
+        active_doc=active_doc,
+        compare_ids=compare_ids,
+        history_summary=_history_summary(state),
+        user_message=state.get("user_message", ""),
+    )
 
     try:
         response = client.models.generate_content(
@@ -276,7 +259,11 @@ def _classify_query_mode_fallback(
 ) -> dict:
     """Minimal fallback if the LLM classifier fails."""
     message = (state.get("user_message") or "").lower()
-    if any(kw in message for kw in ("compare", " versus ", " vs ", "difference")):
+    if is_support_request(state.get("user_message", "")):
+        mode: QueryMode = "support"
+    elif is_company_policy_question(state.get("user_message", "")):
+        mode = "company_faq"
+    elif any(kw in message for kw in ("compare", " versus ", " vs ", "difference")):
         mode: QueryMode = "compare"
     elif any(kw in message for kw in ("how many pages", "page count", "list pages")):
         mode = "metadata"

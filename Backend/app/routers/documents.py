@@ -34,6 +34,7 @@ class QueryRequest(BaseModel):
     document_id: Optional[str] = None
     session_id: Optional[str] = None
     stream: bool = False
+    faq_mode: bool = False
 
 async def process_in_background(
     filepath: str,
@@ -189,6 +190,7 @@ async def query_documents(
                 conversation_history=history,
                 document_id=request.document_id,
                 session_id=request.session_id,
+                faq_mode=request.faq_mode,
             ),
             media_type="text/event-stream",
             headers={
@@ -204,6 +206,7 @@ async def query_documents(
         conversation_history=history,
         document_id=request.document_id,
         session_id=request.session_id,
+        faq_mode=request.faq_mode,
     )
 
     return result

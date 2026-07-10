@@ -1,16 +1,16 @@
 """
-LangGraph node implementations for the document agent.
+LangGraph node implementations for the AI Customer Support Assistant.
 
 Workflow overview
 -----------------
 0. classify_route   — resolve session context + pick query mode
 1. normal_chat      — direct Gemini reply (no RAG)
-2. single_document  — RAG search scoped to one document
-3. multi_document   — RAG search across all user uploads
-4. compare_documents— grounded comparison from both documents
+2. single_document  — RAG search scoped to one knowledge base article
+3. multi_document   — RAG search across the full knowledge base
+4. compare_documents— grounded comparison of two articles
 5. get_document_info / list_pages — metadata
 6. router           — Gemini tool loop for complex multi-step turns
-7. generate_answer  — finalize answer + page/source citations
+7. generate_answer  — finalize answer + source citations
 """
 
 from __future__ import annotations
@@ -36,12 +36,35 @@ from app.graph.routing import (
     resolve_compare_document_ids,
     resolve_compare_document_ids_from_names,
 )
+from app.graph.prompts import (
+    CUSTOMER_SUPPORT_SYSTEM_PROMPT,
+    GENERATE_ANSWER_FALLBACK,
+    MODEL_ACKNOWLEDGMENT,
+    NO_KB_RESULTS,
+    NORMAL_CHAT_FALLBACK,
+    UNABLE_TO_COMPLETE,
+    routing_hint_for_mode,
+)
 from app.graph.state import AgentState, QueryMode, SourceCitation, ToolCall
+from app.graph.support_tool_defs import SUPPORT_TOOL_DECLARATIONS
 from app.services.rag_service import (
     get_document_info,
     list_pages,
     list_user_documents,
     search_document,
+)
+from app.services.support_tools import (
+    SUPPORT_TOOL_NAMES,
+    detect_support_tool_request,
+    execute_support_tool,
+    followup_support_hint,
+    is_support_request,
+)
+from app.services.company_faq import (
+    FAQ_UNAVAILABLE_MESSAGE,
+    company_faq_scope_label,
+    is_company_policy_question,
+    resolve_company_faq_document_id,
 )
 
 client = genai.Client(api_key=settings.GOOGLE_API_KEY)
@@ -51,8 +74,8 @@ TOOLS = types.Tool(function_declarations=[
     types.FunctionDeclaration(
         name="search_document",
         description=(
-            "Search uploaded documents for relevant information. "
-            "Pass document_id to scope to one file; omit it to search all uploads."
+            "Search the knowledge base for information relevant to the customer's question. "
+            "Pass document_id to scope to one article; omit it to search the full knowledge base."
         ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
@@ -63,7 +86,7 @@ TOOLS = types.Tool(function_declarations=[
                 ),
                 "document_id": types.Schema(
                     type=types.Type.STRING,
-                    description="Optional document ID to search within",
+                    description="Optional knowledge base article ID to search within",
                 ),
             },
             required=["query"],
@@ -71,7 +94,7 @@ TOOLS = types.Tool(function_declarations=[
     ),
     types.FunctionDeclaration(
         name="get_document_info",
-        description="Get metadata about an uploaded document.",
+        description="Get metadata about a knowledge base article (title, pages, etc.).",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
@@ -85,7 +108,7 @@ TOOLS = types.Tool(function_declarations=[
     ),
     types.FunctionDeclaration(
         name="list_pages",
-        description="List all page numbers in a document.",
+        description="List all page numbers in a knowledge base article.",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
@@ -99,7 +122,10 @@ TOOLS = types.Tool(function_declarations=[
     ),
     types.FunctionDeclaration(
         name="compare_documents",
-        description="Compare two documents on a specific aspect.",
+        description=(
+            "Compare two knowledge base articles on a specific aspect "
+            "to help answer the customer's question."
+        ),
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
@@ -119,39 +145,69 @@ TOOLS = types.Tool(function_declarations=[
             required=["doc1_id", "doc2_id", "aspect"],
         ),
     ),
+    *SUPPORT_TOOL_DECLARATIONS,
 ])
 
-SYSTEM_PROMPT = """You are a document analysis assistant.
-You help users understand and discuss their uploaded documents.
-
-Rules:
-1. Always use search_document before answering content questions
-2. Always cite page numbers and source document names in your answers
-3. If information is not in the documents, say so clearly
-4. Never make up information — only use what the tools return
-5. For comparisons, use compare_documents with both document IDs
-6. For follow-up questions, stay within the active document context when set"""
+SYSTEM_PROMPT = CUSTOMER_SUPPORT_SYSTEM_PROMPT
 
 
-def _routing_hint_for_mode(
-    mode: QueryMode,
-    active_document_id: str | None,
-    compare_ids: list[str],
-) -> str:
-    if mode == "single_document" and active_document_id:
-        return f"Mode: single-document search. Focus on document {active_document_id}."
-    if mode == "multi_document":
-        return "Mode: multi-document search. Search across all uploaded documents."
-    if mode == "compare" and len(compare_ids) >= 2:
-        return (
-            f"Mode: document comparison. Compare {compare_ids[0]} "
-            f"and {compare_ids[1]}."
+def _registered_tool_names() -> list[str]:
+    return [fd.name for fd in TOOLS.function_declarations]
+
+
+def _function_call_args(fc: Any) -> dict[str, Any]:
+    raw = getattr(fc, "args", None)
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return dict(raw)
+    except Exception:
+        return {}
+
+
+def _extract_function_calls(candidate: Any) -> tuple[list[Any], list[str]]:
+    """Parse Gemini candidate for function calls and text parts."""
+    tool_call_parts: list[Any] = []
+    text_parts: list[str] = []
+    content = getattr(candidate, "content", None)
+    if not content or not getattr(content, "parts", None):
+        return tool_call_parts, text_parts
+
+    for part in content.parts:
+        fc = getattr(part, "function_call", None)
+        name = getattr(fc, "name", None) if fc else None
+        if fc and name:
+            args = _function_call_args(fc)
+            tool_call_parts.append(fc)
+            print(f"📞 Gemini function_call: {name} args={args}")
+        elif getattr(part, "text", None):
+            text_parts.append(part.text)
+            preview = (part.text or "").strip().replace("\n", " ")[:120]
+            if preview:
+                print(f"💬 Gemini text (no tool call): {preview}")
+
+    return tool_call_parts, text_parts
+
+
+def _build_router_config(state: AgentState) -> types.GenerateContentConfig:
+    """Build Gemini config; force function calling on support paths."""
+    force_tools = (
+        state.get("query_mode") == "support"
+        or state.get("support_tool_hint") is not None
+    )
+    if force_tools:
+        print("🔒 Support path: forcing Gemini function calling mode=ANY")
+        return types.GenerateContentConfig(
+            tools=[TOOLS],
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(
+                    mode=types.FunctionCallingConfigMode.ANY,
+                )
+            ),
         )
-    if mode == "metadata":
-        return "Mode: document metadata request."
-    if mode == "normal_chat":
-        return "Mode: normal chat. No document search required."
-    return ""
+    return types.GenerateContentConfig(tools=[TOOLS])
 
 
 def build_initial_contents(
@@ -163,7 +219,7 @@ def build_initial_contents(
     """Build checkpoint-safe messages from system prompt, history, and user turn."""
     contents: list[dict] = [
         text_message("user", f"[System]: {SYSTEM_PROMPT}"),
-        text_message("model", "Understood. I'll help analyze documents."),
+        text_message("model", MODEL_ACKNOWLEDGMENT),
     ]
 
     for msg in conversation_history[-10:]:
@@ -175,7 +231,7 @@ def build_initial_contents(
     user_content = user_message
     if document_id:
         user_content = (
-            f"[Context: Focus on document {document_id}]\n"
+            f"[Context: Focus on knowledge base article {document_id}]\n"
             f"{user_message}"
         )
     if routing_hint:
@@ -196,7 +252,7 @@ def _append_model_turn_once(state: AgentState, contents: list[dict]) -> None:
 
 def _format_search_results(chunks: list[dict], scope: str = "") -> str:
     if not chunks:
-        return "No relevant information found in the documents."
+        return NO_KB_RESULTS
 
     header = f"Search scope: {scope}\n\n" if scope else ""
     parts = []
@@ -344,6 +400,7 @@ def _process_tool_batch(
 
     tool_result_texts: list[str] = []
     remaining_queue: list[ToolCall] = []
+    last_classify_payload: dict[str, Any] | None = None
 
     for item in tool_queue:
         if item["tool"] != tool_name:
@@ -357,8 +414,8 @@ def _process_tool_batch(
             if tool_name == "search_document":
                 doc_id = tool_args.get("document_id") or active_document_id
                 scope = (
-                    f"document {doc_id[:8]}..."
-                    if doc_id else "all user documents"
+                    f"article {doc_id[:8]}..."
+                    if doc_id else "full knowledge base"
                 )
                 result, chunks = _run_search(
                     tool_args, user_id, doc_id, scope
@@ -380,7 +437,7 @@ def _process_tool_batch(
                 if not _valid_compare_ids(args.get("doc1_id"), args.get("doc2_id")):
                     catalog = list_user_documents(user_id)
                     result = (
-                        "Cannot compare: need two valid document IDs. "
+                        "Cannot compare: need two valid knowledge base article IDs. "
                         f"Resolved: {resolved}. "
                         f"Available: {[d['filename'] for d in catalog]}"
                     )
@@ -400,6 +457,21 @@ def _process_tool_batch(
                 )
                 pages = list_pages(user_id=user_id, document_id=doc_id)
                 result = f"Document has {len(pages)} pages: {pages}"
+            elif tool_name in SUPPORT_TOOL_NAMES:
+                args = dict(tool_args)
+                if tool_name == "classify_intent" and not args.get("message"):
+                    args["message"] = state.get("user_message", "")
+                print(f"🎫 Dispatching support tool: {tool_name} args={args}")
+                payload = execute_support_tool(
+                    tool_name,
+                    args,
+                    user_id=user_id,
+                    session_id=state.get("thread_id"),
+                )
+                result = json.dumps(payload, indent=2)
+                print(f"🎫 Support tool result ({tool_name}): {result[:200]}...")
+                if tool_name == "classify_intent":
+                    last_classify_payload = payload
             else:
                 result = f"Unknown tool: {tool_name}"
 
@@ -417,13 +489,29 @@ def _process_tool_batch(
     if tool_result_texts:
         contents.append(text_message("user", "\n\n".join(tool_result_texts)))
 
-    return {
+    batch_update: dict[str, Any] = {
         "contents": contents,
         "tool_queue": remaining_queue,
         "tool_calls_made": tool_calls_made,
         "retrieved_chunks": retrieved_chunks,
         "model_content_pending": None,
     }
+
+    if tool_name == "classify_intent" and last_classify_payload:
+        followup = followup_support_hint(
+            last_classify_payload, state.get("user_message", "")
+        )
+        if followup:
+            batch_update["support_tool_hint"] = followup
+            contents.append(text_message(
+                "user",
+                f"[Support routing]: Intent classified. You MUST call "
+                f"{followup['tool']} next with args {json.dumps(followup['args'])}.",
+            ))
+            batch_update["contents"] = contents
+            print(f"🔁 Follow-up support hint set: {followup['tool']}")
+
+    return batch_update
 
 
 async def classify_route_node(state: AgentState) -> dict[str, Any]:
@@ -437,6 +525,23 @@ async def classify_route_node(state: AgentState) -> dict[str, Any]:
         "active_document_id": active_document_id,
     })
     query_mode = classification["query_mode"]
+    support_tool_hint = None
+
+    if state.get("force_query_mode") == "company_faq":
+        query_mode = "company_faq"
+        print("📋 FAQ mode forced from client → query_mode=company_faq")
+    elif detect_support_tool_request(state.get("user_message", "")):
+        query_mode = "support"
+        support_tool_hint = detect_support_tool_request(state.get("user_message", ""))
+        print(f"🎧 Support request detected → query_mode=support hint={support_tool_hint}")
+    elif is_company_policy_question(state.get("user_message", "")):
+        query_mode = "company_faq"
+        print("📋 Company policy question detected → query_mode=company_faq")
+    elif is_support_request(state.get("user_message", "")):
+        query_mode = "support"
+        support_tool_hint = detect_support_tool_request(state.get("user_message", ""))
+        print(f"🎧 Support request detected → query_mode=support hint={support_tool_hint}")
+
     compare_document_ids = classification.get(
         "compare_document_ids",
         resolve_compare_document_ids({
@@ -451,7 +556,7 @@ async def classify_route_node(state: AgentState) -> dict[str, Any]:
             "compare_document_ids": compare_document_ids,
         })
     metadata_action = classification.get("metadata_action")
-    routing_hint = _routing_hint_for_mode(
+    routing_hint = routing_hint_for_mode(
         query_mode, active_document_id, compare_document_ids
     )
 
@@ -470,42 +575,123 @@ async def classify_route_node(state: AgentState) -> dict[str, Any]:
         "query_mode": query_mode,
         "metadata_action": metadata_action,
         "routing_hint": routing_hint,
+        "support_tool_hint": support_tool_hint,
         "contents": contents,
         "route": query_mode,
     }
 
 
+async def support_entry_node(state: AgentState) -> dict[str, Any]:
+    """
+    Support entry — skip knowledge base search and route to router with tool hints.
+    """
+    print("🎧 Support entry node → router (no proactive RAG)")
+    hint = (
+        state.get("support_tool_hint")
+        or detect_support_tool_request(state.get("user_message", ""))
+    )
+    contents = list(state.get("contents", []))
+    if hint:
+        contents.append(text_message(
+            "user",
+            f"[Support routing]: You MUST call {hint['tool']} now with args "
+            f"{json.dumps(hint['args'])}. Do NOT answer without calling this tool.",
+        ))
+        print(f"🎧 Support tool hint injected: {hint['tool']}")
+    return {
+        "contents": contents,
+        "support_tool_hint": hint,
+        "query_mode": "support",
+        "route": "router",
+    }
+
+
+async def company_faq_search_node(state: AgentState) -> dict[str, Any]:
+    """
+    Company FAQ — proactive RAG search scoped to Company_FAQ.pdf.
+
+    Uses search_document() via _auto_search. No manual document selection required.
+    """
+    user_id = state["user_id"]
+    faq_doc_id = resolve_company_faq_document_id(user_id)
+    scope = company_faq_scope_label(faq_doc_id)
+
+    print(f"📋 Company FAQ search → document_id={faq_doc_id or 'NOT FOUND'}")
+
+    if not faq_doc_id:
+        contents = list(state.get("contents", []))
+        contents.append(text_message(
+            "user",
+            f"[Company FAQ unavailable]:\n{FAQ_UNAVAILABLE_MESSAGE}",
+        ))
+        return {
+            "contents": contents,
+            "query_mode": "company_faq",
+            "route": "router",
+        }
+
+    return _auto_search(
+        state,
+        document_id=faq_doc_id,
+        scope_label=scope,
+    )
+
+
 async def normal_chat_node(state: AgentState) -> dict[str, Any]:
-    """Normal chat — answer without RAG when no document search is needed."""
+    """Conversational support — answer without RAG when no knowledge lookup is needed."""
+    if is_company_policy_question(state.get("user_message", "")):
+        print("↪️ Redirecting policy question from normal_chat to Company FAQ")
+        return await company_faq_search_node(state)
+
+    if is_support_request(state.get("user_message", "")):
+        print("↪️ Redirecting misclassified support request from normal_chat")
+        return await support_entry_node(state)
+
     print("💬 Normal chat (no RAG)")
     response = client.models.generate_content(
         model=MODEL,
         contents=to_gemini_contents(state["contents"]),
     )
     return {
-        "final_answer": response.text or "Hello! How can I help with your documents?",
+        "final_answer": response.text or NORMAL_CHAT_FALLBACK,
         "route": "generate_answer",
     }
 
 
 async def single_document_search_node(state: AgentState) -> dict[str, Any]:
     """Single-document search — RAG scoped to active_document_id."""
+    if is_company_policy_question(state.get("user_message", "")):
+        print("↪️ Redirecting policy question from single_document to Company FAQ")
+        return await company_faq_search_node(state)
+
+    if is_support_request(state.get("user_message", "")):
+        print("↪️ Skipping KB search — support request in single_document path")
+        return await support_entry_node(state)
+
     doc_id = state.get("active_document_id")
     print(f"📄 Single-document search → {doc_id}")
     return _auto_search(
         state,
         document_id=doc_id,
-        scope_label=f"single document ({doc_id[:8] if doc_id else 'none'}...)",
+        scope_label=f"knowledge base article ({doc_id[:8] if doc_id else 'none'}...)",
     )
 
 
 async def multi_document_search_node(state: AgentState) -> dict[str, Any]:
     """Multi-document search — RAG across all user uploads in Chroma."""
+    if is_company_policy_question(state.get("user_message", "")):
+        print("↪️ Redirecting policy question from multi_document to Company FAQ")
+        return await company_faq_search_node(state)
+
+    if is_support_request(state.get("user_message", "")):
+        print("↪️ Skipping KB search — support request in multi_document path")
+        return await support_entry_node(state)
+
     print("📚 Multi-document search across all uploads")
     return _auto_search(
         state,
         document_id=None,
-        scope_label="all user documents",
+        scope_label="full knowledge base",
     )
 
 
@@ -557,9 +743,9 @@ async def compare_documents_node(state: AgentState) -> dict[str, Any]:
 
     if not _valid_compare_ids(doc1_id, doc2_id):
         err = (
-            f"Could not identify two documents to compare. "
-            f"Available files: {', '.join(catalog_names) or 'none'}. "
-            "Please name both documents clearly (e.g. compare X with Y)."
+            f"Could not identify two knowledge base articles to compare. "
+            f"Available articles: {', '.join(catalog_names) or 'none'}. "
+            "Please name both articles clearly (e.g. compare X with Y)."
         )
         contents = list(state.get("contents", []))
         contents.append(text_message("user", f"[Comparison error]:\n{err}"))
@@ -656,39 +842,51 @@ async def router_node(state: AgentState) -> dict[str, Any]:
     if iterations >= max_iterations:
         return {
             "route": "generate_answer",
-            "final_answer": state.get("final_answer")
-            or "I was unable to complete the analysis. Please try again.",
+            "final_answer": state.get("final_answer") or UNABLE_TO_COMPLETE,
         }
 
     print(f"🔄 Agent iteration {iterations + 1}")
 
+    tool_names = _registered_tool_names()
+    print(f"🛠️ Passing {len(tool_names)} tools to Gemini: {tool_names}")
+
     response = client.models.generate_content(
         model=MODEL,
         contents=to_gemini_contents(state["contents"]),
-        config=types.GenerateContentConfig(tools=[TOOLS]),
+        config=_build_router_config(state),
     )
 
     candidate = response.candidates[0]
-    tool_call_parts: list[Any] = []
-    text_parts: list[str] = []
-
-    for part in candidate.content.parts:
-        if hasattr(part, "function_call") and part.function_call:
-            tool_call_parts.append(part.function_call)
-        elif hasattr(part, "text") and part.text:
-            text_parts.append(part.text)
+    tool_call_parts, text_parts = _extract_function_calls(candidate)
 
     if not tool_call_parts:
-        print(f"✅ Agent done after {iterations + 1} iterations")
+        hint = (
+            state.get("support_tool_hint")
+            or detect_support_tool_request(state.get("user_message", ""))
+        )
+        if hint and hint["tool"] in SUPPORT_TOOL_NAMES:
+            print(
+                f"⚡ Proactive support dispatch (Gemini returned no tool call): "
+                f"{hint['tool']} args={hint['args']}"
+            )
+            return {
+                "route": hint["tool"],
+                "tool_queue": [{"tool": hint["tool"], "args": dict(hint["args"])}],
+                "iterations": iterations + 1,
+            }
+
+        print(f"✅ Agent done after {iterations + 1} iterations (text only)")
         return {
             "route": "generate_answer",
-            "final_answer": "\n".join(text_parts),
+            "final_answer": "\n".join(text_parts) or GENERATE_ANSWER_FALLBACK,
             "iterations": iterations + 1,
         }
 
     tool_queue: list[ToolCall] = [
-        {"tool": fc.name, "args": dict(fc.args)} for fc in tool_call_parts
+        {"tool": fc.name, "args": _function_call_args(fc)}
+        for fc in tool_call_parts
     ]
+    print(f"🔀 Router dispatching to graph node: {tool_queue[0]['tool']}")
 
     return {
         "route": tool_queue[0]["tool"],
@@ -711,6 +909,31 @@ async def get_document_info_node(state: AgentState) -> dict[str, Any]:
 async def list_pages_node(state: AgentState) -> dict[str, Any]:
     """List Pages Node — page numbers for a document."""
     return _process_tool_batch(state, "list_pages")
+
+
+def make_tool_node(tool_name: str):
+    """Factory for router-initiated tool nodes (RAG and support tools)."""
+    async def node(state: AgentState) -> dict[str, Any]:
+        print(f"📍 Graph node executing: {tool_name}")
+        return _process_tool_batch(state, tool_name)
+
+    node.__name__ = f"{tool_name}_node"
+    node.__qualname__ = f"{tool_name}_node"
+    return node
+
+
+# Support tool nodes — registered dynamically in graph.py via SUPPORT_TOOL_NAMES
+create_ticket_node = make_tool_node("create_ticket")
+check_order_status_node = make_tool_node("check_order_status")
+escalate_to_human_node = make_tool_node("escalate_to_human")
+classify_intent_node = make_tool_node("classify_intent")
+
+SUPPORT_TOOL_NODE_MAP = {
+    "create_ticket": create_ticket_node,
+    "check_order_status": check_order_status_node,
+    "escalate_to_human": escalate_to_human_node,
+    "classify_intent": classify_intent_node,
+}
 
 
 def _build_sources(state: AgentState) -> list[SourceCitation]:
@@ -796,7 +1019,7 @@ def _append_citation_footer(
     if not sources:
         return answer
 
-    lines = ["\n\n**Sources:**"]
+    lines = ["\n\n**References:**"]
     for i, src in enumerate(sources[:5], 1):
         name = src.get("source") or src.get("document_id", "document")
         lines.append(f"{i}. {name}, page {src.get('page', '?')}")
@@ -807,8 +1030,7 @@ async def generate_answer_node(state: AgentState) -> dict[str, Any]:
     """Generate Answer Node — finalizes response with page + document citations."""
     sources = _build_sources(state)
     final_answer = _append_citation_footer(
-        state.get("final_answer")
-        or "I was unable to complete the analysis. Please try again.",
+        state.get("final_answer") or GENERATE_ANSWER_FALLBACK,
         sources,
     )
 

@@ -29,5 +29,5 @@ async def get_db():
 
 async def create_tables():
     async with engine.begin() as conn:
-        from app.models import user, session, message, document
+        from app.models import user, session, message, document, conversation
         await conn.run_sync(Base.metadata.create_all)

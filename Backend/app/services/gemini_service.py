@@ -228,6 +228,33 @@ async def get_ai_response(
 
     return ai_reply
 
+async def generate_reply_with_persona(
+    history: list[dict],
+    user_message: str,
+    persona: str = "default",
+) -> str:
+    """
+    Generate a Gemini reply without persisting to chat session tables.
+    Used by support conversation APIs for non-agent personas.
+    """
+    gemini_history = [
+        {
+            "role": "user" if msg["role"] == "user" else "model",
+            "parts": [msg["content"]],
+        }
+        for msg in history[-20:]
+    ]
+    contents = _build_contents(gemini_history, user_message, persona)
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=contents,
+        )
+        return response.text or ""
+    except Exception as e:
+        raise Exception(f"Gemini error: {str(e)}") from e
+
 async def get_ai_response_stream(
     db: AsyncSession,
     user_id: str,

@@ -1,5 +1,5 @@
 """
-Shared state for the document agent LangGraph workflow.
+Shared state for the AI Customer Support Assistant LangGraph workflow.
 
 The graph carries conversation context, pending tool calls, retrieved chunks
 (for citations), routing mode, and the final answer through each node.
@@ -14,6 +14,8 @@ QueryMode = Literal[
     "multi_document",
     "compare",
     "metadata",
+    "support",
+    "company_faq",
 ]
 
 
@@ -45,6 +47,8 @@ class AgentState(TypedDict, total=False):
     query_mode: QueryMode
     routing_hint: str
     metadata_action: Optional[str]
+    support_tool_hint: Optional[dict[str, Any]]
+    force_query_mode: Optional[QueryMode]
 
     # --- Gemini conversation (serializable dicts for checkpointing) ---
     contents: list[dict]

@@ -1,5 +1,5 @@
 """
-Document agent service — public API for the documents router.
+Customer support agent service — public API for the documents router.
 
 Orchestration is handled by LangGraph (app/graph/). This module keeps the
 same function signatures so API routes and tests remain unchanged.
@@ -32,13 +32,14 @@ async def run_document_agent(
     document_id: str = None,
     session_id: str = None,
     max_iterations: int = 5,
+    faq_mode: bool = False,
 ) -> dict:
     """
-    Run the document analysis agent via LangGraph.
+    Run the customer support agent via LangGraph.
 
     Returns:
         answer     — final Gemini response text
-        sources    — page citations from RAG retrieval
+        sources    — citations from knowledge base retrieval
         tool_calls — tools invoked during the run
         iterations — router loop count
     """
@@ -49,6 +50,7 @@ async def run_document_agent(
         document_id=document_id,
         session_id=session_id,
         max_iterations=max_iterations,
+        faq_mode=faq_mode,
     )
 
     _persist_conversation(session_id, user_message, result.get("answer", ""))
@@ -61,6 +63,7 @@ async def stream_document_agent(
     conversation_history: list = None,
     document_id: str = None,
     session_id: str = None,
+    faq_mode: bool = False,
 ):
     """
     Streaming version — yields status updates and final answer.
@@ -69,7 +72,7 @@ async def stream_document_agent(
     if conversation_history is None:
         conversation_history = []
 
-    yield "data: 🤔 Analyzing your question...\n\n"
+    yield "data: 🤔 Looking into that for you...\n\n"
 
     result = await run_document_agent(
         user_message=user_message,
@@ -77,22 +80,33 @@ async def stream_document_agent(
         conversation_history=conversation_history,
         document_id=document_id,
         session_id=session_id,
+        faq_mode=faq_mode,
     )
 
     for call in result["tool_calls"]:
         if call["tool"] == "search_document":
-            yield f"data: 🔍 Searching: {call['args'].get('query', '')}\n\n"
+            yield f"data: 🔍 Searching knowledge base: {call['args'].get('query', '')}\n\n"
         elif call["tool"] == "get_document_info":
-            yield "data: 📄 Getting document info...\n\n"
+            yield "data: 📄 Checking article details...\n\n"
         elif call["tool"] == "compare_documents":
-            yield "data: ⚖️ Comparing documents...\n\n"
+            yield "data: ⚖️ Comparing knowledge base articles...\n\n"
         elif call["tool"] == "list_pages":
-            yield "data: 📑 Listing pages...\n\n"
+            yield "data: 📑 Listing article pages...\n\n"
+        elif call["tool"] == "classify_intent":
+            yield "data: 🏷️ Classifying your request...\n\n"
+        elif call["tool"] == "check_order_status":
+            yield f"data: 📦 Checking order {call['args'].get('order_id', '')}...\n\n"
+        elif call["tool"] == "create_ticket":
+            yield "data: 🎫 Creating support ticket...\n\n"
+        elif call["tool"] == "escalate_to_human":
+            yield "data: 🙋 Escalating to a human agent...\n\n"
 
-    if result.get("query_mode") == "multi_document":
-        yield "data: 📚 Searching across all your documents...\n\n"
+    if result.get("query_mode") == "company_faq":
+        yield "data: 📋 Searching Company FAQ for policy information...\n\n"
+    elif result.get("query_mode") == "multi_document":
+        yield "data: 📚 Searching the full knowledge base...\n\n"
     elif result.get("query_mode") == "single_document":
-        yield "data: 📄 Searching selected document...\n\n"
+        yield "data: 📄 Searching selected article...\n\n"
 
     answer = result["answer"]
     words = answer.split(" ")
