@@ -85,65 +85,65 @@ JWT bearer auth with role-style permissions (`ai:chat`, `ai:embed`, `ai:search`)
 
 ```mermaid
 flowchart TB
-    subgraph Frontend["Frontend (Next.js)"]
-        UI[Chat / Documents / FAQ / Analytics UI]
-        AuthUI[Login & Register]
+    subgraph frontend ["Frontend (Next.js)"]
+        ui["Chat, Documents, FAQ, Analytics UI"]
+        auth_ui["Login and Register"]
     end
 
-    subgraph Backend["Backend (FastAPI)"]
-        AuthR[/api/auth]
-        ChatR[/api/chat]
-        DocR[/api/documents]
-        ConvR[/api/conversations]
-        AnalyticsR[/api/analytics]
+    subgraph backend ["Backend (FastAPI)"]
+        auth_r["POST /api/auth"]
+        chat_r["POST /api/chat"]
+        doc_r["POST /api/documents"]
+        conv_r["POST /api/conversations"]
+        analytics_r["GET /api/analytics"]
     end
 
-    subgraph Agent["LangGraph Agent"]
-        Classify[classify_route]
-        Router[router]
-        RAGNodes[RAG & FAQ nodes]
-        SupportNodes[Support tool nodes]
-        Gen[generate_answer]
+    subgraph agent ["LangGraph Agent"]
+        classify["classify_route"]
+        router_node["router"]
+        rag_nodes["RAG and FAQ nodes"]
+        support_nodes["Support tool nodes"]
+        gen["generate_answer"]
     end
 
-    subgraph Data["Data Layer"]
-        PG[(PostgreSQL)]
-        Redis[(Redis)]
-        Chroma[(ChromaDB)]
+    subgraph data ["Data Layer"]
+        pg[("PostgreSQL")]
+        redis_db[("Redis")]
+        chroma[("ChromaDB")]
     end
 
-    subgraph External["External APIs"]
-        Gemini[Google Gemini]
+    subgraph external ["External APIs"]
+        gemini["Google Gemini"]
     end
 
-    UI --> AuthR
-    UI --> ChatR
-    UI --> DocR
-    UI --> ConvR
-    UI --> AnalyticsR
+    ui --> auth_r
+    ui --> chat_r
+    ui --> doc_r
+    ui --> conv_r
+    ui --> analytics_r
 
-    ChatR --> Gemini
-    ChatR --> PG
-    ChatR --> Redis
+    chat_r --> gemini
+    chat_r --> pg
+    chat_r --> redis_db
 
-    DocR --> Agent
-    ConvR --> Agent
-    ConvR --> PG
+    doc_r --> classify
+    conv_r --> classify
+    conv_r --> pg
 
-    AnalyticsR --> PG
+    analytics_r --> pg
 
-    Classify --> Router
-    Router --> RAGNodes
-    Router --> SupportNodes
-    RAGNodes --> Chroma
-    RAGNodes --> Router
-    SupportNodes --> Router
-    Router --> Gen
-    Gen --> Gemini
+    classify --> router_node
+    router_node --> rag_nodes
+    router_node --> support_nodes
+    rag_nodes --> chroma
+    rag_nodes --> router_node
+    support_nodes --> router_node
+    router_node --> gen
+    gen --> gemini
 
-    DocR --> PG
-    DocR --> Chroma
-    DocR --> Redis
+    doc_r --> pg
+    doc_r --> chroma
+    doc_r --> redis_db
 ```
 
 ---
