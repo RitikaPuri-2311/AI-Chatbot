@@ -15,9 +15,13 @@ export function useAuth() {
     if (!token || !savedUser) {
       router.replace('/login')
     } else {
-      setUser(savedUser)
+      setTimeout(() => {
+        setUser(savedUser)
+      }, 0)
     }
-    setLoading(false)
+    setTimeout(() => {
+      setLoading(false)
+    }, 0)
   }, [router])
 
   return { user, loading }

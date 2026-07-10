@@ -1,4 +1,10 @@
-import type { Message, ChatSession } from '@/types'
+import type {
+  Message,
+  ChatSession,
+  ConversationOverview,
+  TopicAnalytics,
+  SentimentAnalytics,
+} from '@/types'
 import { getToken, getUser } from '@/lib/auth'
 import toast from 'react-hot-toast'
 
@@ -63,6 +69,7 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
 export async function sendMessage(
   content: string,
   sessionId: string,
+  persona: string = 'default', 
   onChunk: (chunk: string) => void
 ): Promise<void> {
   const token = getToken()
@@ -76,7 +83,8 @@ export async function sendMessage(
     },
     body: JSON.stringify({
       message: content,
-      session_id: sessionId
+      session_id: sessionId,
+      persona: persona     
     })
   })
 
@@ -170,4 +178,112 @@ export async function getMessages(
   } catch {
     return []
   }
+}
+export async function uploadDocument(file: File): Promise<unknown> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${API_URL}/api/documents/upload`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${getToken()}` },
+    body: formData
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}))
+    throw new Error(error.detail ?? 'Upload failed')
+  }
+  return res.json()
+}
+
+export async function getDocuments(): Promise<unknown[]> {
+  try {
+    const res = await fetch(`${API_URL}/api/documents/`, {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.documents
+  } catch {
+    return []
+  }
+}
+
+export async function queryDocuments(
+  question: string,
+  documentId: string | null,
+  sessionId?: string,
+  options?: { faqMode?: boolean }
+): Promise<{ answer: string; sources: unknown[] }> {
+  const body: Record<string, unknown> = {
+    question,
+    session_id: sessionId,
+    stream: false,
+  }
+  if (documentId) {
+    body.document_id = documentId
+  }
+  if (options?.faqMode) {
+    body.faq_mode = true
+  }
+
+  const res = await fetch(`${API_URL}/api/documents/query`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`
+    },
+    body: JSON.stringify(body)
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}))
+    throw new Error(error.detail ?? 'Query failed')
+  }
+  return res.json()
+}
+
+export async function deleteDocument(documentId: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${API_URL}/api/documents/${documentId}`,
+      {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      }
+    )
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function analyticsFetch<T>(path: string): Promise<T> {
+  const token = getToken()
+  if (!token) throw new Error('Not authenticated')
+
+  const res = await fetch(`${API_URL}/api/analytics${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}))
+    throw new Error(
+      (error as { detail?: string }).detail ?? 'Failed to load analytics'
+    )
+  }
+
+  return res.json()
+}
+
+export async function getConversationAnalytics(): Promise<ConversationOverview> {
+  return analyticsFetch<ConversationOverview>('/conversations')
+}
+
+export async function getTopicAnalytics(): Promise<TopicAnalytics> {
+  return analyticsFetch<TopicAnalytics>('/topics')
+}
+
+export async function getSentimentAnalytics(): Promise<SentimentAnalytics> {
+  return analyticsFetch<SentimentAnalytics>('/sentiment')
 }

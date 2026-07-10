@@ -4,9 +4,14 @@ import { useState } from 'react'
 interface Props {
   onSend: (content: string) => void
   isLoading: boolean
+  placeholder?: string
 }
 
-export default function MessageInput({ onSend, isLoading }: Props) {
+export default function MessageInput({
+  onSend,
+  isLoading,
+  placeholder = 'Message AI... (Shift+Enter for new line)',
+}: Props) {
   const [value, setValue] = useState('')
   const MAX_CHARS = 1000
 
@@ -38,7 +43,7 @@ export default function MessageInput({ onSend, isLoading }: Props) {
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             rows={1}
-            placeholder="Message AI... (Shift+Enter for new line)"
+            placeholder={placeholder}
             className="flex-1 bg-transparent text-sm text-gray-800 
             dark:text-gray-100 resize-none focus:outline-none 
             disabled:opacity-50 placeholder:text-gray-400 
