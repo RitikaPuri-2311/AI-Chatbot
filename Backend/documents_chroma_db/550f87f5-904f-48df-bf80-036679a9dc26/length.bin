@@ -1,0 +1,4 @@
+invalid type: string "KUBERNETES MASTERCLASS\n❖\nBY Praveen Singampalli founder of Heydevops\n❖\nLinkedin - https://www.linkedin.com/in/praveen-singampalli/\n❖\nInstagram - https://www.instagram.com/singam4devops/\n❖\nDownload HeyDevOps App on Android", expected f64`Runnable`.
+    config: A config to use when invoking the `Runnable`.
+
+        The config supports standard keys like `'tags'`

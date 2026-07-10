@@ -20,6 +20,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "session-001"
+    persona: str = "default"
 
 @router.post("/")
 async def chat(
@@ -49,14 +50,16 @@ async def chat(
 async def chat_stream(
     body: ChatRequest,
     db: AsyncSession = Depends(get_db),
-    # Requires ai:chat permission — 403 if missing
     current_user=Depends(require_permission("ai:chat"))
 ):
     async def generate():
         try:
             async for chunk in get_ai_response_stream(
-                db, current_user.id,
-                body.session_id, body.message
+                db,
+                current_user.id,
+                body.session_id,
+                body.message,
+                body.persona      # ← pass persona
             ):
                 yield f"data: {chunk}\n\n"
         except Exception as e:
@@ -170,3 +173,30 @@ async def get_history(
 ):
     messages = await get_session_history(db, session_id)
     return {"messages": messages}
+
+@router.get("/sessions/{session_id}/export")
+async def export_conversation(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """Export conversation as plain text"""
+    messages = await get_session_history(db, session_id)
+
+    if not messages:
+        raise HTTPException(404, "No messages found")
+
+    lines = [f"AI Chatbot Conversation Export\n{'='*40}\n"]
+    for msg in messages:
+        role = "You" if msg["role"] == "user" else "AI"
+        lines.append(f"{role}: {msg['content']}\n")
+
+    text = "\n".join(lines)
+
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(
+        content=text,
+        headers={
+            "Content-Disposition": f"attachment; filename=conversation-{session_id[:8]}.txt"
+        }
+    )

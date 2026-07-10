@@ -13,7 +13,33 @@ from app.services.redis_service import (
 )
 
 client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.1-flash-lite"
+
+PERSONAS = {
+    "default": """You are a helpful AI assistant. 
+Answer clearly and concisely.""",
+
+    "support": """You are a friendly customer support agent.
+Your goal is to help users solve their problems.
+Be empathetic, patient, and solution-focused.
+If you cannot solve something, escalate politely.
+Always end with: 'Is there anything else I can help you with?'""",
+
+    "code_reviewer": """You are an expert code reviewer.
+Review code for bugs, performance issues, and best practices.
+Be specific about line numbers and provide improved versions.
+Use markdown code blocks in your responses.
+Focus on: correctness, efficiency, readability, security.""",
+
+    "document_analyst": """You are a document analysis expert.
+Help users understand, summarize, and extract insights from documents.
+Be precise with citations and page references.
+Highlight key findings and actionable insights.
+Structure your responses with clear headings."""
+}
+
+def get_system_prompt(persona: str = "default") -> str:
+    return PERSONAS.get(persona, PERSONAS["default"])
 
 async def get_or_create_session(
     db: AsyncSession,
@@ -48,13 +74,34 @@ async def get_or_create_session(
             session = result.scalar_one_or_none()
     return session
 
-def _build_contents(history: list, user_message: str) -> list:
-    """
-    Convert stored history + new message into
-    google-genai contents format.
-    History format: [{role: user/model, parts: [text]}]
-    """
+def _build_contents(
+    history: list,
+    user_message: str,
+    persona: str = "default"
+) -> list:
     contents = []
+
+    # Add system prompt as first user message
+    # Gemini doesn't have a system role — we prepend it
+    system_prompt = get_system_prompt(persona)
+    if system_prompt and not history:
+        contents.append(
+            types.Content(
+                role="user",
+                parts=[types.Part(
+                    text=f"[System]: {system_prompt}"
+                )]
+            )
+        )
+        contents.append(
+            types.Content(
+                role="model",
+                parts=[types.Part(
+                    text="Understood. I'll follow those instructions."
+                )]
+            )
+        )
+
     for msg in history:
         contents.append(
             types.Content(
@@ -62,6 +109,7 @@ def _build_contents(history: list, user_message: str) -> list:
                 parts=[types.Part(text=msg["parts"][0])]
             )
         )
+
     contents.append(
         types.Content(
             role="user",
@@ -184,17 +232,16 @@ async def get_ai_response_stream(
     db: AsyncSession,
     user_id: str,
     session_id: str,
-    user_message: str
+    user_message: str,
+    persona: str = "default"   # ← add this
 ):
-    """Streaming response — yields text chunks"""
     await get_or_create_session(db, user_id, session_id)
     history = await _load_history(db, session_id)
     is_first = len(history) == 0
 
-    contents = _build_contents(history, user_message)
+    contents = _build_contents(history, user_message, persona)  # ← pass persona
 
     full_reply = ""
-
     try:
         for chunk in client.models.generate_content_stream(
             model=MODEL,

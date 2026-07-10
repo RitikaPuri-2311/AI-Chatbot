@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, chat
+from app.routers import documents          # ← ADD THIS
 from app.database import create_tables
 
 app = FastAPI(title="AI Chatbot API")
@@ -19,6 +20,7 @@ async def startup():
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")  # ← ADD THIS
 
 @app.get("/")
 def health_check():
