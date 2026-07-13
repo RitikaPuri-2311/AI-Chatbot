@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from tests.conftest import app
-from app.utils.sentiment import classify_sentiment
 
 BASE = "http://test"
 

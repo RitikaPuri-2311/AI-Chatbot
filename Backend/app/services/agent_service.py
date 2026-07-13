@@ -33,6 +33,7 @@ async def run_document_agent(
     session_id: str = None,
     max_iterations: int = 5,
     faq_mode: bool = False,
+    weather_mode: bool = False,
 ) -> dict:
     """
     Run the customer support agent via LangGraph.
@@ -51,6 +52,7 @@ async def run_document_agent(
         session_id=session_id,
         max_iterations=max_iterations,
         faq_mode=faq_mode,
+        weather_mode=weather_mode,
     )
 
     _persist_conversation(session_id, user_message, result.get("answer", ""))
@@ -64,6 +66,7 @@ async def stream_document_agent(
     document_id: str = None,
     session_id: str = None,
     faq_mode: bool = False,
+    weather_mode: bool = False,
 ):
     """
     Streaming version — yields status updates and final answer.
@@ -81,6 +84,7 @@ async def stream_document_agent(
         document_id=document_id,
         session_id=session_id,
         faq_mode=faq_mode,
+        weather_mode=weather_mode,
     )
 
     for call in result["tool_calls"]:
@@ -100,9 +104,14 @@ async def stream_document_agent(
             yield "data: 🎫 Creating support ticket...\n\n"
         elif call["tool"] == "escalate_to_human":
             yield "data: 🙋 Escalating to a human agent...\n\n"
+        elif call["tool"] == "get_weather":
+            city = call["args"].get("city", "")
+            yield f"data: 🌤️ Fetching current weather{f' for {city}' if city else ''}...\n\n"
 
     if result.get("query_mode") == "company_faq":
         yield "data: 📋 Searching Company FAQ for policy information...\n\n"
+    elif result.get("query_mode") == "weather":
+        yield "data: 🌤️ Fetching current weather...\n\n"
     elif result.get("query_mode") == "multi_document":
         yield "data: 📚 Searching the full knowledge base...\n\n"
     elif result.get("query_mode") == "single_document":

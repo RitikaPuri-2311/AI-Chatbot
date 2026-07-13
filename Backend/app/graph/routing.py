@@ -20,6 +20,7 @@ from app.graph.state import AgentState, QueryMode
 from app.services.rag_service import list_user_documents
 from app.services.company_faq import is_company_policy_question
 from app.services.support_tools import is_support_request
+from app.services.weather_service import is_weather_request
 
 client = genai.Client(api_key=settings.GOOGLE_API_KEY)
 CLASSIFIER_MODEL = "gemini-2.0-flash"
@@ -40,6 +41,7 @@ INTENT_TO_MODE: dict[str, QueryMode] = {
     "metadata": "metadata",
     "support": "support",
     "company_faq": "company_faq",
+    "weather": "weather",
 }
 
 
@@ -261,6 +263,8 @@ def _classify_query_mode_fallback(
     message = (state.get("user_message") or "").lower()
     if is_support_request(state.get("user_message", "")):
         mode: QueryMode = "support"
+    elif is_weather_request(state.get("user_message", "")):
+        mode = "weather"
     elif is_company_policy_question(state.get("user_message", "")):
         mode = "company_faq"
     elif any(kw in message for kw in ("compare", " versus ", " vs ", "difference")):

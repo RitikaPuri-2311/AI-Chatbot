@@ -16,6 +16,7 @@ QueryMode = Literal[
     "metadata",
     "support",
     "company_faq",
+    "weather",
 ]
 
 

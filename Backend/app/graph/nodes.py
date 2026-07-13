@@ -47,6 +47,7 @@ from app.graph.prompts import (
 )
 from app.graph.state import AgentState, QueryMode, SourceCitation, ToolCall
 from app.graph.support_tool_defs import SUPPORT_TOOL_DECLARATIONS
+from app.graph.weather_tool_defs import WEATHER_TOOL_DECLARATIONS
 from app.services.rag_service import (
     get_document_info,
     list_pages,
@@ -65,6 +66,12 @@ from app.services.company_faq import (
     company_faq_scope_label,
     is_company_policy_question,
     resolve_company_faq_document_id,
+)
+from app.services.weather_service import (
+    WEATHER_TOOL_NAMES,
+    execute_weather_tool,
+    is_weather_request,
+    process_weather_query,
 )
 
 client = genai.Client(api_key=settings.GOOGLE_API_KEY)
@@ -146,6 +153,7 @@ TOOLS = types.Tool(function_declarations=[
         ),
     ),
     *SUPPORT_TOOL_DECLARATIONS,
+    *WEATHER_TOOL_DECLARATIONS,
 ])
 
 SYSTEM_PROMPT = CUSTOMER_SUPPORT_SYSTEM_PROMPT
@@ -457,6 +465,15 @@ def _process_tool_batch(
                 )
                 pages = list_pages(user_id=user_id, document_id=doc_id)
                 result = f"Document has {len(pages)} pages: {pages}"
+            elif tool_name in WEATHER_TOOL_NAMES:
+                args = dict(tool_args)
+                if tool_name == "get_weather" and not args.get("city"):
+                    args["message"] = state.get("user_message", "")
+                args["conversation_history"] = state.get("conversation_history", [])
+                print(f"🌤️ Dispatching weather tool: {tool_name} args={args}")
+                payload = execute_weather_tool(args)
+                result = json.dumps(payload, indent=2)
+                print(f"🌤️ Weather tool result ({tool_name}): {result[:200]}...")
             elif tool_name in SUPPORT_TOOL_NAMES:
                 args = dict(tool_args)
                 if tool_name == "classify_intent" and not args.get("message"):
@@ -530,6 +547,9 @@ async def classify_route_node(state: AgentState) -> dict[str, Any]:
     if state.get("force_query_mode") == "company_faq":
         query_mode = "company_faq"
         print("📋 FAQ mode forced from client → query_mode=company_faq")
+    elif state.get("force_query_mode") == "weather":
+        query_mode = "weather"
+        print("🌤️ Weather mode forced from client → query_mode=weather")
     elif detect_support_tool_request(state.get("user_message", "")):
         query_mode = "support"
         support_tool_hint = detect_support_tool_request(state.get("user_message", ""))
@@ -537,6 +557,9 @@ async def classify_route_node(state: AgentState) -> dict[str, Any]:
     elif is_company_policy_question(state.get("user_message", "")):
         query_mode = "company_faq"
         print("📋 Company policy question detected → query_mode=company_faq")
+    elif is_weather_request(state.get("user_message", "")):
+        query_mode = "weather"
+        print("🌤️ Weather request detected → query_mode=weather")
     elif is_support_request(state.get("user_message", "")):
         query_mode = "support"
         support_tool_hint = detect_support_tool_request(state.get("user_message", ""))
@@ -637,8 +660,41 @@ async def company_faq_search_node(state: AgentState) -> dict[str, Any]:
     )
 
 
+async def weather_node(state: AgentState) -> dict[str, Any]:
+    """
+    Weather entry — resolve city/intent, fetch via weather_service, then route
+    to the router for a natural-language customer reply.
+    """
+    print("🌤️ Fetching current weather...")
+    message = state.get("user_message", "")
+    history = state.get("conversation_history", [])
+    contents = list(state.get("contents", []))
+    tool_calls_made = list(state.get("tool_calls_made", []))
+
+    outcome = process_weather_query(message, history)
+    label = "Forecast" if outcome.get("endpoint") == "forecast" else "Current weather"
+    contents.append(text_message("user", f"[{label}]:\n{outcome['formatted']}"))
+
+    if outcome.get("city"):
+        tool_calls_made.append({
+            "tool": "get_weather",
+            "args": {"city": outcome["city"]},
+        })
+
+    return {
+        "contents": contents,
+        "query_mode": "weather",
+        "route": "router",
+        "tool_calls_made": tool_calls_made,
+    }
+
+
 async def normal_chat_node(state: AgentState) -> dict[str, Any]:
     """Conversational support — answer without RAG when no knowledge lookup is needed."""
+    if is_weather_request(state.get("user_message", "")):
+        print("↪️ Redirecting weather question from normal_chat to weather node")
+        return await weather_node(state)
+
     if is_company_policy_question(state.get("user_message", "")):
         print("↪️ Redirecting policy question from normal_chat to Company FAQ")
         return await company_faq_search_node(state)
@@ -660,6 +716,10 @@ async def normal_chat_node(state: AgentState) -> dict[str, Any]:
 
 async def single_document_search_node(state: AgentState) -> dict[str, Any]:
     """Single-document search — RAG scoped to active_document_id."""
+    if is_weather_request(state.get("user_message", "")):
+        print("↪️ Redirecting weather question from single_document to weather node")
+        return await weather_node(state)
+
     if is_company_policy_question(state.get("user_message", "")):
         print("↪️ Redirecting policy question from single_document to Company FAQ")
         return await company_faq_search_node(state)
@@ -679,6 +739,10 @@ async def single_document_search_node(state: AgentState) -> dict[str, Any]:
 
 async def multi_document_search_node(state: AgentState) -> dict[str, Any]:
     """Multi-document search — RAG across all user uploads in Chroma."""
+    if is_weather_request(state.get("user_message", "")):
+        print("↪️ Redirecting weather question from multi_document to weather node")
+        return await weather_node(state)
+
     if is_company_policy_question(state.get("user_message", "")):
         print("↪️ Redirecting policy question from multi_document to Company FAQ")
         return await company_faq_search_node(state)
@@ -933,6 +997,12 @@ SUPPORT_TOOL_NODE_MAP = {
     "check_order_status": check_order_status_node,
     "escalate_to_human": escalate_to_human_node,
     "classify_intent": classify_intent_node,
+}
+
+get_weather_node = make_tool_node("get_weather")
+
+WEATHER_TOOL_NODE_MAP = {
+    "get_weather": get_weather_node,
 }
 
 

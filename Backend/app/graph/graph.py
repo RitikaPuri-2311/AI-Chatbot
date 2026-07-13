@@ -14,6 +14,7 @@ from langgraph.graph import END, StateGraph
 
 from app.graph.nodes import (
     SUPPORT_TOOL_NODE_MAP,
+    WEATHER_TOOL_NODE_MAP,
     classify_route_node,
     compare_documents_node,
     company_faq_search_node,
@@ -27,9 +28,11 @@ from app.graph.nodes import (
     search_document_node,
     single_document_search_node,
     support_entry_node,
+    weather_node,
 )
 from app.graph.state import AgentState, QueryMode
 from app.services.support_tools import SUPPORT_TOOL_NAMES
+from app.services.weather_service import WEATHER_TOOL_NAMES
 
 _compiled_graph = None
 _checkpointer = MemorySaver()
@@ -41,7 +44,7 @@ _BASE_ROUTER_TOOL_NODES = {
     "list_pages",
 }
 
-ROUTER_TOOL_NODES = _BASE_ROUTER_TOOL_NODES | set(SUPPORT_TOOL_NAMES)
+ROUTER_TOOL_NODES = _BASE_ROUTER_TOOL_NODES | set(SUPPORT_TOOL_NAMES) | set(WEATHER_TOOL_NAMES)
 
 MODE_ENTRY_NODES: dict[QueryMode, str] = {
     "normal_chat": "normal_chat",
@@ -51,6 +54,7 @@ MODE_ENTRY_NODES: dict[QueryMode, str] = {
     "metadata": "metadata",
     "support": "support_entry",
     "company_faq": "company_faq_search",
+    "weather": "weather",
 }
 
 
@@ -102,6 +106,7 @@ def build_document_graph():
     graph.add_node("metadata", metadata_node)
     graph.add_node("support_entry", support_entry_node)
     graph.add_node("company_faq_search", company_faq_search_node)
+    graph.add_node("weather", weather_node)
 
     graph.add_node("router", router_node)
     graph.add_node("search_document", search_document_node)
@@ -109,6 +114,9 @@ def build_document_graph():
     graph.add_node("list_pages", list_pages_node)
 
     for tool_name, tool_node in SUPPORT_TOOL_NODE_MAP.items():
+        graph.add_node(tool_name, tool_node)
+
+    for tool_name, tool_node in WEATHER_TOOL_NODE_MAP.items():
         graph.add_node(tool_name, tool_node)
 
     graph.add_node("generate_answer", generate_answer_node)
@@ -126,6 +134,7 @@ def build_document_graph():
             "metadata": "metadata",
             "support_entry": "support_entry",
             "company_faq_search": "company_faq_search",
+            "weather": "weather",
         },
     )
 
@@ -139,6 +148,7 @@ def build_document_graph():
     )
     graph.add_edge("support_entry", "router")
     graph.add_edge("company_faq_search", "router")
+    graph.add_edge("weather", "router")
     graph.add_edge("single_document_search", "router")
     graph.add_edge("multi_document_search", "router")
     graph.add_edge("metadata", "router")
@@ -151,6 +161,8 @@ def build_document_graph():
         "generate_answer": "generate_answer",
     }
     for tool_name in SUPPORT_TOOL_NAMES:
+        router_conditional_targets[tool_name] = tool_name
+    for tool_name in WEATHER_TOOL_NAMES:
         router_conditional_targets[tool_name] = tool_name
 
     graph.add_conditional_edges(
@@ -167,6 +179,8 @@ def build_document_graph():
         "list_pages": "list_pages",
     }
     for tool_name in SUPPORT_TOOL_NAMES:
+        tool_chain_targets[tool_name] = tool_name
+    for tool_name in WEATHER_TOOL_NAMES:
         tool_chain_targets[tool_name] = tool_name
 
     for tool_node in ROUTER_TOOL_NODES:
@@ -187,7 +201,8 @@ def get_document_graph():
     if _compiled_graph is None:
         _compiled_graph = build_document_graph()
         support_nodes = sorted(SUPPORT_TOOL_NAMES)
-        print(f"✅ LangGraph compiled — support tool nodes: {support_nodes}")
+        weather_nodes = sorted(WEATHER_TOOL_NAMES)
+        print(f"✅ LangGraph compiled — support tool nodes: {support_nodes}, weather: {weather_nodes}")
     return _compiled_graph
 
 
@@ -199,6 +214,7 @@ async def run_document_graph(
     session_id: str | None = None,
     max_iterations: int = 5,
     faq_mode: bool = False,
+    weather_mode: bool = False,
 ) -> dict:
     """
     Run the LangGraph customer support agent workflow.
@@ -233,6 +249,8 @@ async def run_document_graph(
         input_state["thread_id"] = _thread_id(session_id)
     if faq_mode:
         input_state["force_query_mode"] = "company_faq"
+    if weather_mode:
+        input_state["force_query_mode"] = "weather"
 
     thread = (
         _thread_id(session_id)

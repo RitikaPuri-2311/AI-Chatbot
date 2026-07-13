@@ -3,7 +3,7 @@ import os
 import uuid
 import hashlib
 from sentence_transformers import SentenceTransformer
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 import chromadb
 
 MODEL = SentenceTransformer('all-MiniLM-L6-v2')

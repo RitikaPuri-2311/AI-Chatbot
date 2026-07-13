@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, chat
 from app.routers import documents
-from app.routers import conversations, analytics
+from app.routers import conversations, jira
 from app.database import create_tables
 
 app = FastAPI(title="AI Chatbot API")
@@ -23,7 +23,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
-app.include_router(analytics.router, prefix="/api")
+app.include_router(jira.router, prefix="/api")
 
 @app.get("/")
 def health_check():

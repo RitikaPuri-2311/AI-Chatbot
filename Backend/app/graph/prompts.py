@@ -61,7 +61,8 @@ INTENT_DEFINITIONS = """Intents:
 - compare_documents: customer wants to compare two knowledge base articles
 - metadata: customer asks about article info, page count, or page list (not content)
 - support: customer asks about order status, wants a ticket, refund, escalation, or other support action requiring support tools (NOT knowledge base search)
-- company_faq: customer asks about company policies (return, refund policy, warranty, shipping, cancellation, business hours, contact info) — answer from Company_FAQ.pdf"""
+- company_faq: customer asks about company policies (return, refund policy, warranty, shipping, cancellation, business hours, contact info) — answer from Company_FAQ.pdf
+- weather: customer asks about current weather, temperature, rain, or forecast for a city — use get_weather, NOT knowledge base search"""
 
 
 def routing_hint_for_mode(
@@ -96,6 +97,11 @@ def routing_hint_for_mode(
         return (
             "Mode: company policy FAQ. Answer using retrieved Company_FAQ.pdf excerpts "
             "with document name and page citations."
+        )
+    if mode == "weather":
+        return (
+            "Mode: weather lookup. Use get_weather for the requested city. "
+            "Do NOT search the knowledge base for weather questions."
         )
     return ""
 

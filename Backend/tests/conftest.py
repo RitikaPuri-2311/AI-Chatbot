@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from app.database import get_db, Base
-from app.routers import auth, chat, conversations, analytics
+from app.routers import auth, chat, conversations
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
@@ -32,7 +32,6 @@ def create_test_app() -> FastAPI:
     app.include_router(auth.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(conversations.router, prefix="/api")
-    app.include_router(analytics.router, prefix="/api")
 
     try:
         from app.routers import documents
