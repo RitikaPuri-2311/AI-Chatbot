@@ -1,0 +1,28 @@
+# Python
+**/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+
+# Git
+.git
+.gitignore
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+test.db
+
+# Data
+uploads/
+documents_chroma_db/
+chroma_db/
+
+# IDE
+.vscode/
+.idea/
