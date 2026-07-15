@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ChevronDown, FileText } from 'lucide-react'
 import type { Source } from '@/types'
 import {
   groupSourcesByDocument,
@@ -19,77 +20,61 @@ export default function SourcePanel({ sources }: Props) {
   const grouped = groupSourcesByDocument(sources)
 
   return (
-    <div className="mt-3 pt-3 border-t border-gray-200
-      dark:border-gray-700">
-      <p className="text-xs font-medium text-gray-600
-        dark:text-gray-300 mb-2">
-        📄 Sources
+    <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
+      <p className="text-[10px] font-semibold uppercase tracking-wider
+        text-[var(--color-text-muted)] mb-2 flex items-center gap-1.5">
+        <FileText className="w-3 h-3" />
+        Sources
       </p>
 
-      <ul className="space-y-1 mb-3">
+      <ul className="space-y-0.5 mb-3">
         {grouped.map(({ name, pages }) => (
           <li
             key={name}
-            className="text-xs text-gray-600 dark:text-gray-300"
+            className="text-xs text-[var(--color-text-secondary)]"
           >
             • {name} — {formatPageLabel(pages)}
           </li>
         ))}
       </ul>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         {sources.map((source, i) => (
           <div
             key={`${source.source}-${source.page}-${i}`}
-            className="border border-gray-200 dark:border-gray-700
-              rounded-lg overflow-hidden bg-gray-50 dark:bg-gray-800/50"
+            className="border border-[var(--color-border-subtle)] rounded-xl
+              overflow-hidden bg-[var(--color-surface)]"
           >
-            <div
-              className="flex items-center justify-between px-3 py-2
-                cursor-pointer hover:bg-gray-100
-                dark:hover:bg-gray-700/50 transition-colors"
+            <button
+              type="button"
+              className="flex items-center justify-between w-full px-3 py-2
+                cursor-pointer hover:bg-[var(--color-surface-overlay)]
+                transition-colors text-left"
               onClick={() => setExpanded(expanded === i ? null : i)}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs font-medium text-indigo-600
-                  dark:text-indigo-400 shrink-0">
+                <span className="text-xs font-medium text-violet-400 shrink-0">
                   Page {source.page}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400
-                  truncate">
+                <span className="text-xs text-[var(--color-text-muted)] truncate">
                   {source.source}
                 </span>
                 {source.similarity != null && (
-                  <span className="text-xs text-gray-400
-                    dark:text-gray-500 shrink-0">
-                    {Math.round(source.similarity * 100)}% match
+                  <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
+                    {Math.round(source.similarity * 100)}%
                   </span>
                 )}
               </div>
-
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className={`w-3.5 h-3.5 text-gray-400 shrink-0
-                  transition-transform
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0
+                  transition-transform duration-200
                   ${expanded === i ? 'rotate-180' : ''}`}
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M12.53 16.28a.75.75 0 01-1.06 0l-7.5-7.5a.75.75
-                  0 011.06-1.06L12 14.69l6.97-6.97a.75.75 0 111.06
-                  1.06l-7.5 7.5z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
+              />
+            </button>
 
             {expanded === i && (
-              <div className="px-3 py-2 border-t border-gray-200
-                dark:border-gray-700">
-                <p className="text-xs text-gray-600 dark:text-gray-300
-                  leading-relaxed">
+              <div className="px-3 py-2 border-t border-[var(--color-border-subtle)]">
+                <p className="text-xs text-[var(--color-text-secondary)] leading-relaxed">
                   {source.text_snippet}
                 </p>
               </div>

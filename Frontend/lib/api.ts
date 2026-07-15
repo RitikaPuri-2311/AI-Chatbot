@@ -1,9 +1,8 @@
 import type {
   Message,
   ChatSession,
-  ConversationOverview,
-  TopicAnalytics,
-  SentimentAnalytics,
+  SupportRequestPayload,
+  SupportRequestResponse,
 } from '@/types'
 import { getToken, getUser } from '@/lib/auth'
 import toast from 'react-hot-toast'
@@ -41,6 +40,36 @@ export async function createSession(): Promise<ChatSession | null> {
     })
     if (!res.ok) return null
     return res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function renameSession(
+  sessionId: string,
+  title: string,
+): Promise<ChatSession | null> {
+  try {
+    const token = getToken()
+    if (!token) return null
+    const res = await fetch(
+      `${API_URL}/api/chat/sessions/${sessionId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title }),
+      },
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    return {
+      id: data.id,
+      title: data.title,
+      createdAt: '',
+    }
   } catch {
     return null
   }
@@ -213,7 +242,7 @@ export async function queryDocuments(
   question: string,
   documentId: string | null,
   sessionId?: string,
-  options?: { faqMode?: boolean }
+  options?: { faqMode?: boolean; weatherMode?: boolean }
 ): Promise<{ answer: string; sources: unknown[] }> {
   const body: Record<string, unknown> = {
     question,
@@ -225,6 +254,9 @@ export async function queryDocuments(
   }
   if (options?.faqMode) {
     body.faq_mode = true
+  }
+  if (options?.weatherMode) {
+    body.weather_mode = true
   }
 
   const res = await fetch(`${API_URL}/api/documents/query`, {
@@ -258,32 +290,31 @@ export async function deleteDocument(documentId: string): Promise<boolean> {
   }
 }
 
-async function analyticsFetch<T>(path: string): Promise<T> {
+export async function submitSupportRequest(
+  payload: SupportRequestPayload,
+): Promise<SupportRequestResponse> {
   const token = getToken()
   if (!token) throw new Error('Not authenticated')
 
-  const res = await fetch(`${API_URL}/api/analytics${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const res = await fetch(`${API_URL}/api/jira/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
   })
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({}))
-    throw new Error(
-      (error as { detail?: string }).detail ?? 'Failed to load analytics'
-    )
+    const detail = (error as { detail?: string }).detail
+
+    if (res.status >= 500) {
+      throw new Error('The server is currently unavailable. Please try again later.')
+    }
+
+    throw new Error(detail ?? 'Unable to submit your request. Please try again.')
   }
 
   return res.json()
-}
-
-export async function getConversationAnalytics(): Promise<ConversationOverview> {
-  return analyticsFetch<ConversationOverview>('/conversations')
-}
-
-export async function getTopicAnalytics(): Promise<TopicAnalytics> {
-  return analyticsFetch<TopicAnalytics>('/topics')
-}
-
-export async function getSentimentAnalytics(): Promise<SentimentAnalytics> {
-  return analyticsFetch<SentimentAnalytics>('/sentiment')
 }

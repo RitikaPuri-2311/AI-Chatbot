@@ -2,7 +2,7 @@
 
 A full-stack **AI Customer Support Assistant** that combines a Next.js chat interface with a FastAPI backend powered by **Google Gemini**, **LangGraph**, **RAG (ChromaDB)**, and mock support tools for order lookup, ticketing, and escalation.
 
-Users can chat with multiple personas, upload PDF knowledge-base documents, query them with citations, browse **Company FAQ** policies, manage conversations via REST APIs, and view an **Analytics Dashboard** for support metrics.
+Users can chat with multiple personas, upload PDF knowledge-base documents, query them with citations, browse **Company FAQ** policies, check **live weather** by city, and manage conversations via REST APIs.
 
 ---
 
@@ -10,7 +10,7 @@ Users can chat with multiple personas, upload PDF knowledge-base documents, quer
 
 This project is an end-to-end customer support platform:
 
-- **Frontend** — Next.js 16 App Router UI with login/register, streaming chat, document panel, Company FAQ mode (quick-action chips + welcome card), and analytics dashboard.
+- **Frontend** — Next.js 16 App Router UI with login/register, streaming chat, document panel, and Company FAQ mode (quick-action chips + welcome card).
 - **Backend** — FastAPI API with JWT authentication, PostgreSQL persistence, optional Redis conversation cache, ChromaDB vector search, and a LangGraph agent that routes requests to RAG retrieval or support tools.
 - **Agent** — A stateful LangGraph workflow classifies each message, runs document search / FAQ lookup / support tools in a loop, and generates grounded answers with page-level citations.
 
@@ -19,7 +19,7 @@ The system supports two conversation tracks:
 | Track | Storage | Used by |
 |-------|---------|---------|
 | **Chat sessions** | `chat_sessions` + `messages` (PostgreSQL), Redis cache | Frontend chat UI (`/api/chat/*`) |
-| **Support conversations** | `conversations` + `conversation_messages` (PostgreSQL) | Conversation APIs + analytics (`/api/conversations/*`, `/api/analytics/*`) |
+| **Support conversations** | `conversations` + `conversation_messages` (PostgreSQL) | Conversation APIs (`/api/conversations/*`) |
 
 Document-agent queries (`/api/documents/query`) run through LangGraph and optionally persist turn history in Redis when a `session_id` is provided.
 
@@ -35,6 +35,15 @@ Stateful agent graph with routing, tool loops, checkpointing (`MemorySaver`), an
 
 ### Company FAQ RAG
 Policy questions (returns, warranty, shipping, cancellation, business hours, contact info) are detected via `company_faq.py` and searched against uploaded `Company_FAQ.pdf` without manual document selection. The frontend **Company FAQ** mode sends `faq_mode: true` to force FAQ routing.
+
+### Weather Lookup
+Weather questions (current conditions, temperature, rain) are detected via `weather_service.py` and routed to a dedicated **`weather`** LangGraph node. The **Weather** persona sends `weather_mode: true` to force weather routing. Data comes from the [OpenWeatherMap Current Weather API](https://openweathermap.org/current); set `OPENWEATHER_API_KEY` in `Backend/.env`.
+
+Example prompts:
+- `What's the weather in Delhi?`
+- `Weather in Mumbai`
+- `Temperature in Bangalore`
+- `Will it rain today in Chennai?`
 
 ### Document Upload & Search
 PDF upload, text extraction (PyMuPDF), chunking, embedding (`all-MiniLM-L6-v2`), and per-user ChromaDB collections. Supports single-document, multi-document, compare, and metadata query modes.
@@ -54,9 +63,6 @@ Keyword-based `classify_intent` support tool plus LLM-based query routing in `ro
 ### Conversation History
 - Chat UI: session list, message history, export (`/api/chat/sessions`, `/api/chat/history/{id}`).
 - Support API: CRUD conversations with stored intent, tools used, and response time metadata.
-
-### Analytics Dashboard
-Frontend dashboard fetches conversation overview, topic distribution, and keyword-based sentiment breakdown from `/api/analytics/*`.
 
 ### Authentication
 JWT bearer auth with role-style permissions (`ai:chat`, `ai:embed`, `ai:search`). Register, login, and `/me` endpoints.
@@ -86,7 +92,7 @@ JWT bearer auth with role-style permissions (`ai:chat`, `ai:embed`, `ai:search`)
 ```mermaid
 flowchart TB
     subgraph frontend ["Frontend (Next.js)"]
-        ui["Chat, Documents, FAQ, Analytics UI"]
+        ui["Chat, Documents, FAQ UI"]
         auth_ui["Login and Register"]
     end
 
@@ -95,7 +101,6 @@ flowchart TB
         chat_r["POST /api/chat"]
         doc_r["POST /api/documents"]
         conv_r["POST /api/conversations"]
-        analytics_r["GET /api/analytics"]
     end
 
     subgraph agent ["LangGraph Agent"]
@@ -103,6 +108,7 @@ flowchart TB
         router_node["router"]
         rag_nodes["RAG and FAQ nodes"]
         support_nodes["Support tool nodes"]
+        weather_node["weather node"]
         gen["generate_answer"]
     end
 
@@ -114,13 +120,13 @@ flowchart TB
 
     subgraph external ["External APIs"]
         gemini["Google Gemini"]
+        openweather["OpenWeatherMap"]
     end
 
     ui --> auth_r
     ui --> chat_r
     ui --> doc_r
     ui --> conv_r
-    ui --> analytics_r
 
     chat_r --> gemini
     chat_r --> pg
@@ -130,14 +136,15 @@ flowchart TB
     conv_r --> classify
     conv_r --> pg
 
-    analytics_r --> pg
-
     classify --> router_node
+    classify --> weather_node
     router_node --> rag_nodes
     router_node --> support_nodes
     rag_nodes --> chroma
     rag_nodes --> router_node
     support_nodes --> router_node
+    weather_node --> openweather
+    weather_node --> router_node
     router_node --> gen
     gen --> gemini
 
@@ -159,8 +166,7 @@ AI-Chatbot/
 │   │   ├── models/              # SQLAlchemy models (user, session, message, document, conversation)
 │   │   ├── routers/             # FastAPI route handlers
 │   │   ├── schemas/             # Pydantic request/response schemas
-│   │   ├── services/            # Business logic (RAG, agent, auth, support tools, analytics)
-│   │   ├── utils/               # Utilities (e.g. sentiment classifier)
+│   │   ├── services/            # Business logic (RAG, agent, auth, support tools, weather)
 │   │   ├── config.py
 │   │   ├── database.py
 │   │   ├── dependencies.py
@@ -173,15 +179,15 @@ AI-Chatbot/
 │   ├── app/
 │   │   ├── (auth)/login/        # Login page
 │   │   ├── (auth)/register/     # Register page
-│   │   ├── chat/                # Main chat + sidebar (Documents, FAQ, Analytics)
+│   │   ├── chat/                # Main chat + sidebar (Documents, FAQ)
 │   │   ├── layout.tsx
 │   │   └── globals.css
 │   ├── components/
-│   │   ├── analytics/           # Analytics dashboard components
 │   │   ├── auth/                # Login/register forms
 │   │   ├── chat/                # Chat window, bubbles, input
 │   │   ├── documents/           # Document panel, sources
-│   │   └── faq/                 # Company FAQ UI
+│   │   ├── faq/                 # Company FAQ UI
+│   │   └── weather/             # Weather persona quick-action chips
 │   ├── hooks/                   # useAuth
 │   ├── lib/                     # api.ts, auth.ts
 │   ├── types/                   # Shared TypeScript types
@@ -290,6 +296,9 @@ DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/ai_chatbot
 # Redis (optional — chat history cache)
 REDIS_URL=redis://localhost:6379
 REDIS_TTL=86400
+
+# OpenWeatherMap (optional — weather persona / weather routing)
+OPENWEATHER_API_KEY=your_openweather_api_key
 ```
 
 The frontend calls the API at `http://localhost:8000` (configured in `Frontend/lib/api.ts`).
@@ -323,7 +332,6 @@ redis-server
 1. Register at `/register` and log in.
 2. Upload PDFs (including `Company_FAQ.pdf` for FAQ mode) via the Documents sidebar.
 3. Chat in default/support persona, query documents, or open **Company FAQ**.
-4. View **Analytics** for support conversation metrics (data from `/api/conversations` usage).
 
 ---
 
@@ -397,14 +405,6 @@ Default permissions on register: `ai:chat`, `ai:embed`, `ai:search`.
 
 Assistant metadata stored: `intent`, `tool_used`, `response_time_ms`.
 
-### Analytics — `/api/analytics`
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/analytics/conversations` | Total conversations, avg duration, avg messages, top persona |
-| `GET` | `/analytics/topics` | Intent/topic counts from user messages |
-| `GET` | `/analytics/sentiment` | Positive / neutral / negative counts (keyword-based) |
-
 ### Health
 
 | Method | Endpoint | Description |
@@ -428,13 +428,14 @@ The customer support agent is compiled in `Backend/app/graph/graph.py` with **Me
 | `metadata` | `metadata` | Document info / page listing |
 | `support` | `support_entry` | Support tool routing |
 | `company_faq` | `company_faq_search` | Company FAQ policy RAG |
+| `weather` | `weather` | Current weather via OpenWeatherMap |
 
 ### Flow (simplified)
 
-1. **`classify_route`** — LLM + heuristics pick query mode; detect support requests and FAQ policy questions.
-2. **Mode entry node** — Proactive RAG search or support entry as needed.
-3. **`router`** — Gemini function calling; enqueues tools (`search_document`, `check_order_status`, etc.).
-4. **Tool nodes** — Execute RAG or support tools; return to `router` until done.
+1. **`classify_route`** — LLM + heuristics pick query mode; detect support requests, FAQ policy questions, and weather prompts.
+2. **Mode entry node** — Proactive RAG search, support entry, or weather fetch as needed.
+3. **`router`** — Gemini function calling; enqueues tools (`search_document`, `check_order_status`, `get_weather`, etc.).
+4. **Tool nodes** — Execute RAG, support, or weather tools; return to `router` until done.
 5. **`generate_answer`** — Final Gemini response with **References** footer and structured `sources`.
 
 ### RAG tools (router)
@@ -450,6 +451,12 @@ The customer support agent is compiled in `Backend/app/graph/graph.py` with **Me
 - `check_order_status`
 - `create_ticket`
 - `escalate_to_human`
+
+### Weather tools (router + weather node)
+
+- `get_weather` — Current conditions for a city (`weather_service.py` → OpenWeatherMap)
+
+Gemini declarations: `Backend/app/graph/weather_tool_defs.py`. The **`weather`** node proactively calls `get_weather`, injects structured results into the conversation, then routes to **`router`** → **`generate_answer`** for a natural reply.
 
 ---
 
@@ -495,7 +502,6 @@ Gemini function declarations live in `Backend/app/graph/support_tool_defs.py`. T
 | ![Chat UI](docs/screenshots/chat.png) | Main chat interface with sessions sidebar |
 | ![Documents](docs/screenshots/documents.png) | Document upload and scoped search |
 | ![Company FAQ](docs/screenshots/faq.png) | Company FAQ mode with quick-action chips |
-| ![Analytics](docs/screenshots/analytics.png) | Analytics dashboard (summary, topics, sentiment) |
 | ![API Docs](docs/screenshots/swagger.png) | FastAPI Swagger UI at `/docs` |
 
 ---
@@ -516,10 +522,10 @@ Run specific suites:
 pytest tests/test_auth.py -v
 pytest tests/test_chat.py tests/test_chatbot.py -v
 pytest tests/test_documents.py -v
-pytest tests/test_conversations.py tests/test_analytics.py -v
+pytest tests/test_conversations.py -v
 ```
 
-Tests use **SQLite** (`tests/conftest.py`) with dependency overrides — no PostgreSQL required for CI/local test runs. Conversation and analytics tests **mock** the LangGraph agent (`invoke_support_agent`) to avoid real LLM calls.
+Tests use **SQLite** (`tests/conftest.py`) with dependency overrides — no PostgreSQL required for CI/local test runs. Conversation tests **mock** the LangGraph agent (`invoke_support_agent`) to avoid real LLM calls.
 
 | Test file | Coverage |
 |-----------|----------|
@@ -528,7 +534,6 @@ Tests use **SQLite** (`tests/conftest.py`) with dependency overrides — no Post
 | `test_chatbot.py` | Streaming, export, personas |
 | `test_documents.py` | Upload, list, query, isolation |
 | `test_conversations.py` | Conversation CRUD + messaging |
-| `test_analytics.py` | Metrics, topics, sentiment |
 
 ### Coverage (optional)
 
@@ -546,9 +551,8 @@ pytest --cov=app --cov-report=term-missing
 Based on current code comments and architecture gaps:
 
 - Replace mock support tools with real **order management**, **ticketing** (Jira/Zendesk), and **human escalation** queue APIs.
-- Swap keyword **sentiment** and **intent** classifiers for LLM-based models.
+- Swap the keyword **intent** classifier for an LLM-based model.
 - **httpOnly cookie** auth instead of `localStorage` JWT (noted in frontend rules).
-- Unify chat sessions and support `conversations` into a single persistence model for analytics.
 - **Token refresh** and production-hardened auth.
 - Pin missing runtime dependencies (`chromadb`, `redis`, etc.) explicitly in `requirements.txt`.
 - Markdown rendering for AI responses, session sidebar for multi-FAQ sources, and mobile layout polish.

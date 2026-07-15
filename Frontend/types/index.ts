@@ -48,24 +48,16 @@ export interface QueryResult {
   iterations?: number
 }
 
-export interface ConversationOverview {
-  total_conversations: number
-  average_duration: string
-  average_messages: number
-  most_used_persona: string
+export interface SupportRequestPayload {
+  summary: string
+  description: string
+  issue_type: string
 }
 
-export interface TopicCount {
-  topic: string
-  count: number
-}
-
-export interface TopicAnalytics {
-  topics: TopicCount[]
-}
-
-export interface SentimentAnalytics {
-  positive: number
-  neutral: number
-  negative: number
+export interface SupportRequestResponse {
+  success: boolean
+  key?: string
+  id?: string
+  self_url?: string
+  message?: string
 }
