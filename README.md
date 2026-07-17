@@ -1,248 +1,253 @@
-# AI Customer Support Chatbot
+# AI Chatbot
 
-A full-stack **AI Customer Support Assistant** that combines a Next.js chat interface with a FastAPI backend powered by **Google Gemini**, **LangGraph**, **RAG (ChromaDB)**, and mock support tools for order lookup, ticketing, and escalation.
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Users can chat with multiple personas, upload PDF knowledge-base documents, query them with citations, browse **Company FAQ** policies, check **live weather** by city, and manage conversations via REST APIs.
+A full-stack AI chatbot platform that combines a modern Next.js frontend with a FastAPI backend powered by **Google Gemini**, **LangGraph**, **ChromaDB**, **PostgreSQL**, and **Redis**. Users can hold streaming AI conversations, upload PDF documents for semantic search, query company FAQs, check live weather, and submit support tickets through a polished SaaS-style interface.
 
----
-
-## Project Overview
-
-This project is an end-to-end customer support platform:
-
-- **Frontend** — Next.js 16 App Router UI with login/register, streaming chat, document panel, and Company FAQ mode (quick-action chips + welcome card).
-- **Backend** — FastAPI API with JWT authentication, PostgreSQL persistence, optional Redis conversation cache, ChromaDB vector search, and a LangGraph agent that routes requests to RAG retrieval or support tools.
-- **Agent** — A stateful LangGraph workflow classifies each message, runs document search / FAQ lookup / support tools in a loop, and generates grounded answers with page-level citations.
-
-The system supports two conversation tracks:
-
-| Track | Storage | Used by |
-|-------|---------|---------|
-| **Chat sessions** | `chat_sessions` + `messages` (PostgreSQL), Redis cache | Frontend chat UI (`/api/chat/*`) |
-| **Support conversations** | `conversations` + `conversation_messages` (PostgreSQL) | Conversation APIs (`/api/conversations/*`) |
-
-Document-agent queries (`/api/documents/query`) run through LangGraph and optionally persist turn history in Redis when a `session_id` is provided.
+Built for production-style patterns: JWT authentication, role-based permissions, session-based chat history, RAG with citations, and Dockerized deployment.
 
 ---
 
-## Key Features
+## ✨ Features
 
-### AI Customer Support Assistant
-Gemini-powered assistant with configurable personas (`default`, `support`, `code_reviewer`, `document_analyst`). The support persona is integrated with LangGraph for tool use and knowledge-base retrieval.
-
-### LangGraph Workflow
-Stateful agent graph with routing, tool loops, checkpointing (`MemorySaver`), and a `generate_answer` node that appends citations.
-
-### Company FAQ RAG
-Policy questions (returns, warranty, shipping, cancellation, business hours, contact info) are detected via `company_faq.py` and searched against uploaded `Company_FAQ.pdf` without manual document selection. The frontend **Company FAQ** mode sends `faq_mode: true` to force FAQ routing.
-
-### Weather Lookup
-Weather questions (current conditions, temperature, rain) are detected via `weather_service.py` and routed to a dedicated **`weather`** LangGraph node. The **Weather** persona sends `weather_mode: true` to force weather routing. Data comes from the [OpenWeatherMap Current Weather API](https://openweathermap.org/current); set `OPENWEATHER_API_KEY` in `Backend/.env`.
-
-Example prompts:
-- `What's the weather in Delhi?`
-- `Weather in Mumbai`
-- `Temperature in Bangalore`
-- `Will it rain today in Chennai?`
-
-### Document Upload & Search
-PDF upload, text extraction (PyMuPDF), chunking, embedding (`all-MiniLM-L6-v2`), and per-user ChromaDB collections. Supports single-document, multi-document, compare, and metadata query modes.
-
-### Order Status Tool
-Mock `check_order_status` tool — looks up orders such as `ORD-10001`, `ORD-10002`, `ORD-10003` with sample statuses (Processing, Shipped, Delivered).
-
-### Create Support Ticket
-Mock `create_ticket` tool — returns generated ticket IDs (e.g. `SUP-101`).
-
-### Escalate to Human
-Mock `escalate_to_human` tool — returns escalation IDs (e.g. `ESC-201`).
-
-### Intent Classification
-Keyword-based `classify_intent` support tool plus LLM-based query routing in `routing.py`. Intents include FAQ, Order Status, Refund, Complaint, Technical Support, and General Inquiry.
-
-### Conversation History
-- Chat UI: session list, message history, export (`/api/chat/sessions`, `/api/chat/history/{id}`).
-- Support API: CRUD conversations with stored intent, tools used, and response time metadata.
-
-### Authentication
-JWT bearer auth with role-style permissions (`ai:chat`, `ai:embed`, `ai:search`). Register, login, and `/me` endpoints.
+- **AI-powered conversational chatbot** — Streaming responses via Google Gemini with multiple personas (`default`, `support`, `code_reviewer`, `document_analyst`)
+- **Retrieval-Augmented Generation (RAG)** — PDF ingestion, chunking, embedding, and semantic search with page-level citations
+- **Document upload and semantic search** — Per-user ChromaDB collections; single, multi-document, compare, and metadata query modes
+- **JWT Authentication** — Secure register, login, and token-based API access
+- **Role-Based Access Control (RBAC)** — Permission gates for `ai:chat`, `ai:embed`, and `ai:search`
+- **Session-based chat history** — Create, rename, pin, export, and delete chat sessions with PostgreSQL + Redis caching
+- **Weather API integration** — Live conditions via OpenWeatherMap, routed through the LangGraph agent
+- **FAQ support** — Company policy Q&A against uploaded FAQ documents with dedicated UI mode
+- **Help & Support module** — Jira issue creation, search, assignment, and status updates from the frontend
+- **Redis caching** — Fast conversation history retrieval with configurable TTL
+- **PostgreSQL database** — Persistent users, sessions, messages, documents, and support conversations
+- **Dockerized deployment** — Multi-container setup with Docker Compose (API, frontend, PostgreSQL, Redis)
+- **Responsive Next.js frontend** — Collapsible sidebar, dark mode, markdown rendering, chat history grouping, and mobile-friendly layout
 
 ---
 
-## Tech Stack
+## 🛠 Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS 4 |
-| **Backend** | FastAPI, Uvicorn, Pydantic |
-| **AI / Agent** | Google Gemini (`google-genai`), LangGraph, LangChain text splitter |
-| **Embeddings / RAG** | sentence-transformers (`all-MiniLM-L6-v2`), ChromaDB |
-| **PDF processing** | PyMuPDF (`fitz`) |
-| **Database** | PostgreSQL (async SQLAlchemy + asyncpg), Alembic migrations |
-| **Cache** | Redis (optional, chat history sliding window) |
-| **Auth** | python-jose (JWT), passlib + bcrypt |
-| **Testing** | pytest, pytest-asyncio, httpx, SQLite (aiosqlite) for tests |
+### Backend
 
-> **Note:** `chromadb`, `redis`, `PyMuPDF`, `sentence-transformers`, and `langchain` are imported by the backend services. Ensure they are installed in your Python environment alongside `requirements.txt`.
+| Technology | Purpose |
+|------------|---------|
+| Python 3.12+ | Runtime |
+| FastAPI | REST API framework |
+| SQLAlchemy | Async ORM |
+| Alembic | Database migrations |
+| PostgreSQL | Primary data store |
+| Redis | Conversation cache |
+| JWT (python-jose) | Authentication tokens |
+| LangGraph | Agent orchestration & routing |
+| ChromaDB | Vector store for RAG |
+| Google Gemini API | LLM inference & classification |
+| sentence-transformers | Document embeddings |
+| PyMuPDF | PDF text extraction |
 
----
+### Frontend
 
-## System Architecture
+| Technology | Purpose |
+|------------|---------|
+| Next.js 16 | App Router framework |
+| React 19 | UI library |
+| TypeScript | Type-safe development |
+| Tailwind CSS 4 | Utility-first styling |
+| Lucide React | Icon system |
+| react-markdown | AI response rendering |
 
-```mermaid
-flowchart TB
-    subgraph frontend ["Frontend (Next.js)"]
-        ui["Chat, Documents, FAQ UI"]
-        auth_ui["Login and Register"]
-    end
+### DevOps
 
-    subgraph backend ["Backend (FastAPI)"]
-        auth_r["POST /api/auth"]
-        chat_r["POST /api/chat"]
-        doc_r["POST /api/documents"]
-        conv_r["POST /api/conversations"]
-    end
-
-    subgraph agent ["LangGraph Agent"]
-        classify["classify_route"]
-        router_node["router"]
-        rag_nodes["RAG and FAQ nodes"]
-        support_nodes["Support tool nodes"]
-        weather_node["weather node"]
-        gen["generate_answer"]
-    end
-
-    subgraph data ["Data Layer"]
-        pg[("PostgreSQL")]
-        redis_db[("Redis")]
-        chroma[("ChromaDB")]
-    end
-
-    subgraph external ["External APIs"]
-        gemini["Google Gemini"]
-        openweather["OpenWeatherMap"]
-    end
-
-    ui --> auth_r
-    ui --> chat_r
-    ui --> doc_r
-    ui --> conv_r
-
-    chat_r --> gemini
-    chat_r --> pg
-    chat_r --> redis_db
-
-    doc_r --> classify
-    conv_r --> classify
-    conv_r --> pg
-
-    classify --> router_node
-    classify --> weather_node
-    router_node --> rag_nodes
-    router_node --> support_nodes
-    rag_nodes --> chroma
-    rag_nodes --> router_node
-    support_nodes --> router_node
-    weather_node --> openweather
-    weather_node --> router_node
-    router_node --> gen
-    gen --> gemini
-
-    doc_r --> pg
-    doc_r --> chroma
-    doc_r --> redis_db
-```
+| Technology | Purpose |
+|------------|---------|
+| Docker | Container runtime |
+| Docker Compose | Multi-service orchestration |
+| AWS EC2 | Cloud deployment target |
+| Git | Version control |
+| GitHub | Repository hosting |
 
 ---
 
-## Project Folder Structure
+## 📁 Project Structure
 
 ```
 AI-Chatbot/
 ├── Backend/
-│   ├── alembic/                 # Database migrations
 │   ├── app/
-│   │   ├── graph/               # LangGraph workflow (nodes, routing, state, prompts)
-│   │   ├── models/              # SQLAlchemy models (user, session, message, document, conversation)
-│   │   ├── routers/             # FastAPI route handlers
-│   │   ├── schemas/             # Pydantic request/response schemas
-│   │   ├── services/            # Business logic (RAG, agent, auth, support tools, weather)
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── dependencies.py
-│   │   └── main.py
-│   ├── tests/                   # pytest suites
+│   │   ├── main.py                 # FastAPI app entry point
+│   │   ├── config.py               # Environment settings
+│   │   ├── database.py             # SQLAlchemy engine & sessions
+│   │   ├── dependencies.py         # JWT auth & RBAC guards
+│   │   ├── routers/                # API route handlers
+│   │   │   ├── auth.py
+│   │   │   ├── chat.py
+│   │   │   ├── documents.py
+│   │   │   ├── conversations.py
+│   │   │   └── jira.py
+│   │   ├── services/               # Business logic layer
+│   │   │   ├── agent_service.py
+│   │   │   ├── rag_service.py
+│   │   │   ├── gemini_service.py
+│   │   │   ├── weather_service.py
+│   │   │   ├── jira_service.py
+│   │   │   ├── redis_service.py
+│   │   │   └── auth_service.py
+│   │   ├── models/                 # SQLAlchemy ORM models
+│   │   │   ├── user.py
+│   │   │   ├── session.py
+│   │   │   ├── message.py
+│   │   │   ├── document.py
+│   │   │   └── conversation.py
+│   │   ├── schemas/                # Pydantic request/response models
+│   │   │   ├── conversation.py
+│   │   │   └── jira.py
+│   │   └── graph/                  # LangGraph agent workflow
+│   │       ├── graph.py
+│   │       ├── nodes.py
+│   │       ├── routing.py
+│   │       ├── prompts.py
+│   │       └── state.py
+│   ├── alembic/                    # Database migration scripts
+│   ├── tests/                      # Pytest test suite
 │   ├── requirements.txt
-│   └── pytest.ini
-│
+│   └── Dockerfile
 ├── Frontend/
-│   ├── app/
-│   │   ├── (auth)/login/        # Login page
-│   │   ├── (auth)/register/     # Register page
-│   │   ├── chat/                # Main chat + sidebar (Documents, FAQ)
-│   │   ├── layout.tsx
-│   │   └── globals.css
-│   ├── components/
-│   │   ├── auth/                # Login/register forms
-│   │   ├── chat/                # Chat window, bubbles, input
-│   │   ├── documents/           # Document panel, sources
-│   │   ├── faq/                 # Company FAQ UI
-│   │   └── weather/             # Weather persona quick-action chips
-│   ├── hooks/                   # useAuth
-│   ├── lib/                     # api.ts, auth.ts
-│   ├── types/                   # Shared TypeScript types
-│   └── middleware.ts
-│
+│   ├── app/                        # Next.js App Router pages
+│   │   ├── (auth)/login/
+│   │   ├── (auth)/register/
+│   │   ├── chat/
+│   │   ├── documents/
+│   │   ├── faq/
+│   │   └── help-support/
+│   ├── components/                 # React UI components
+│   │   ├── auth/
+│   │   ├── chat/
+│   │   ├── documents/
+│   │   ├── faq/
+│   │   ├── help-support/
+│   │   ├── layout/
+│   │   └── ui/
+│   ├── lib/                        # API client, auth, utilities
+│   ├── hooks/                      # Custom React hooks
+│   ├── types/                      # Shared TypeScript types
+│   └── Dockerfile
+├── docker-compose.yml
 └── README.md
 ```
 
 ---
 
-## Installation & Setup
+## 🏗 System Architecture
+
+The platform follows a layered architecture where the Next.js frontend communicates with the FastAPI backend, which orchestrates AI workflows through LangGraph and persists data across PostgreSQL, Redis, and ChromaDB.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Next.js Frontend                        │
+│          (Auth · AI Chat · Documents · FAQ · Support)           │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │  HTTP / SSE
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      FastAPI Backend (REST)                     │
+│     Auth · Chat · Documents · Conversations · Jira · Health     │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+                ┌───────────────┴───────────────┐
+                ▼                               ▼
+┌───────────────────────────┐   ┌───────────────────────────────┐
+│   Direct Gemini Stream    │   │      LangGraph Agent          │
+│   (/api/chat/stream)      │   │   (/api/documents/query)      │
+└───────────────┬───────────┘   └───────────────┬───────────────┘
+                │                               │
+                ▼                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Google Gemini API                          │
+│              (chat, classification, generation)                 │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+                ┌───────────────┼───────────────┐
+                ▼               ▼               ▼
+┌───────────────────┐ ┌─────────────────┐ ┌─────────────────────┐
+│     ChromaDB      │ │   PostgreSQL    │ │       Redis         │
+│  (vector / RAG)   │ │ users · sessions│ │  conversation cache │
+│                   │ │ messages · docs │ │                     │
+└───────────────────┘ └─────────────────┘ └─────────────────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │  OpenWeatherMap API   │
+                    │  (weather queries)    │
+                    └───────────────────────┘
+```
+
+**Request flow summary:**
+
+1. **AI Chat** — Frontend streams tokens from `/api/chat/stream`; Gemini generates responses; history is saved to PostgreSQL and cached in Redis.
+2. **Document / FAQ / Weather queries** — Frontend calls `/api/documents/query`; LangGraph classifies intent, retrieves from ChromaDB or calls weather tools, then generates a grounded answer with citations.
+3. **Help & Support** — Frontend submits Jira issues via `/api/jira/*` for ticket management.
+
+---
+
+## 🚀 Installation
 
 ### Prerequisites
 
-- **Node.js** 18+ and npm
-- **Python** 3.11+
-- **PostgreSQL**
-- **Redis** (optional but recommended for chat history cache)
-- **Google Gemini API key**
+- Python 3.12+ (3.14 supported with pinned dependencies)
+- Node.js 20+
+- PostgreSQL 16
+- Redis 7
+- Google Gemini API key
+
+### Clone Repository
+
+```bash
+git clone https://github.com/RitikaPuri-2311/AI-Chatbot.git
+cd AI-Chatbot
+```
 
 ### Backend
 
 ```bash
-cd Backend
+# Create and activate a virtual environment
 python -m venv venv
 
 # Windows
 venv\Scripts\activate
+
 # macOS / Linux
 source venv/bin/activate
 
+# Install dependencies
+cd Backend
 pip install -r requirements.txt
-pip install chromadb redis PyMuPDF sentence-transformers langchain
-```
 
-Create `Backend/.env` (see [Environment Variables](#environment-variables)):
+# Create environment file
+# Copy the variables listed in the Environment Variables section into Backend/.env
 
-```bash
-# Copy and edit — do not commit secrets
-cp .env.example .env   # if you maintain an example file
-```
-
-Run database migrations (optional; tables are also created on startup):
-
-```bash
-python -m alembic upgrade head
-```
-
-Start the API:
-
-```bash
+# Start PostgreSQL and Redis (local or Docker), then run the API
 uvicorn app.main:app --reload --port 8000
 ```
 
-API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+The API will be available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+
+**Example `Backend/.env`:**
+
+```env
+DATABASE_URL=postgresql+asyncpg://postgres:yourpassword@localhost:5432/chatbot_db
+REDIS_URL=redis://localhost:6379
+SECRET_KEY=your-super-secret-key-change-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+GOOGLE_API_KEY=your_google_gemini_api_key
+OPENWEATHER_API_KEY=your_openweather_api_key
+```
 
 ### Frontend
 
@@ -252,113 +257,101 @@ npm install
 npm run dev
 ```
 
-App URL: [http://localhost:3000](http://localhost:3000) (redirects to `/login`).
-
-### Database
-
-PostgreSQL connection string format (async):
-
-```env
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/chatbot_db
-```
-
-**Tables created by the application:**
-
-| Table | Purpose |
-|-------|---------|
-| `users` | Accounts, hashed passwords, permissions |
-| `chat_sessions` | Legacy chat sessions for UI |
-| `messages` | Legacy chat messages |
-| `documents` | Uploaded PDF metadata |
-| `conversations` | Support conversation records |
-| `conversation_messages` | Support messages with intent / tool metadata |
-
-Alembic migration `001_add_conversation_tables` adds `conversations` and `conversation_messages`.
+The frontend will be available at `http://localhost:3000`.
 
 ---
 
-## Environment Variables
+## 🐳 Docker Setup
 
-Example `Backend/.env`:
+Docker Compose builds and runs all four services together. Ensure `Backend/.env` exists before starting.
 
-```env
-# Google Gemini
-GOOGLE_API_KEY=your_gemini_api_key
+```bash
+# Build and start all containers
+docker compose up --build
 
-# JWT
-SECRET_KEY=your_long_random_secret_key
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+# Stop and remove containers
+docker compose down
 
-# PostgreSQL (async driver)
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/ai_chatbot
-
-# Redis (optional — chat history cache)
-REDIS_URL=redis://localhost:6379
-REDIS_TTL=86400
-
-# OpenWeatherMap (optional — weather persona / weather routing)
-OPENWEATHER_API_KEY=your_openweather_api_key
+# View running services
+docker compose ps
 ```
 
-The frontend calls the API at `http://localhost:8000` (configured in `Frontend/lib/api.ts`).
+| Container | Service | Port |
+|-----------|---------|------|
+| `chatbot-frontend` | Next.js UI | `3000` |
+| `chatbot-api` | FastAPI backend | `8000` |
+| `chatbot-db` | PostgreSQL 16 | `5432` |
+| `chatbot-redis` | Redis 7 | `6379` |
+
+Set `POSTGRES_PASSWORD` in a root `.env` file or export it before running Compose — it is used by the `db` service.
 
 ---
 
-## Running the Project
+## 🔐 Environment Variables
 
-**Terminal 1 — Backend:**
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | Async PostgreSQL connection string (`postgresql+asyncpg://...`) |
+| `REDIS_URL` | Yes | Redis connection URL (default: `redis://localhost:6379`) |
+| `SECRET_KEY` | Yes | JWT signing secret — use a long random string in production |
+| `ALGORITHM` | No | JWT algorithm (default: `HS256`) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Token lifetime in minutes (default: `30`) |
+| `GOOGLE_API_KEY` | Yes | Google Gemini API key for chat and agent routing |
+| `OPENWEATHER_API_KEY` | No | OpenWeatherMap API key for weather queries |
+| `REDIS_TTL` | No | Redis cache TTL in seconds (default: `86400`) |
+| `JIRA_BASE_URL` | No | Jira Cloud instance URL for Help & Support |
+| `JIRA_EMAIL` | No | Jira account email |
+| `JIRA_API_TOKEN` | No | Jira API token |
+| `JIRA_PROJECT_KEY` | No | Jira project key (e.g. `SUP`) |
+| `POSTGRES_PASSWORD` | Docker | PostgreSQL password for the `db` Compose service |
 
-```bash
-cd Backend
-uvicorn app.main:app --reload --port 8000
-```
-
-**Terminal 2 — Frontend:**
-
-```bash
-cd Frontend
-npm run dev
-```
-
-**Terminal 3 — Redis (optional):**
-
-```bash
-redis-server
-```
-
-**Typical flow:**
-
-1. Register at `/register` and log in.
-2. Upload PDFs (including `Company_FAQ.pdf` for FAQ mode) via the Documents sidebar.
-3. Chat in default/support persona, query documents, or open **Company FAQ**.
+> **Note:** Weather integration uses `OPENWEATHER_API_KEY` (OpenWeatherMap). Register at [openweathermap.org](https://openweathermap.org/api).
 
 ---
 
-## API Overview
+## 📡 API Endpoints
 
 Base URL: `http://localhost:8000/api`  
 Authentication: `Authorization: Bearer <accessToken>` unless noted.
 
-### Auth — `/api/auth`
+### Authentication
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/auth/register` | Register user; returns `accessToken` + user |
-| `POST` | `/auth/login` | Login; returns `accessToken` + user |
-| `GET` | `/auth/me` | Current user profile (requires JWT) |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/auth/register` | No | Register a new user; returns JWT + profile |
+| `POST` | `/auth/login` | No | Authenticate and receive JWT |
+| `GET` | `/auth/me` | Yes | Get current user profile and permissions |
 
-Default permissions on register: `ai:chat`, `ai:embed`, `ai:search`.
+Default permissions on registration: `ai:chat`, `ai:embed`, `ai:search`.
 
-### Documents — `/api/documents`
+### Users
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/documents/upload` | Upload and index a PDF |
-| `GET` | `/documents/` | List user's documents |
-| `DELETE` | `/documents/{document_id}` | Delete document and vectors |
-| `POST` | `/documents/query` | Run LangGraph agent (optional `document_id`, `session_id`, `faq_mode`, `stream`) |
-| `GET` | `/documents/{document_id}/export` | Export document text |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/auth/me` | Yes | Retrieve authenticated user ID, email, username, and permissions |
+
+### Chat
+
+| Method | Endpoint | Permission | Description |
+|--------|----------|------------|-------------|
+| `POST` | `/chat/` | `ai:chat` | Send a message (non-streaming) |
+| `POST` | `/chat/stream` | `ai:chat` | Stream AI response via Server-Sent Events |
+| `GET` | `/chat/sessions` | `ai:chat` | List all chat sessions for the user |
+| `POST` | `/chat/sessions` | `ai:chat` | Create a new chat session |
+| `PATCH` | `/chat/sessions/{session_id}` | `ai:chat` | Rename a session |
+| `DELETE` | `/chat/sessions/{session_id}` | `ai:chat` | Delete session and cached history |
+| `GET` | `/chat/history/{session_id}` | `ai:chat` | Fetch message history for a session |
+| `GET` | `/chat/sessions/{session_id}/export` | `ai:chat` | Export session as plain text |
+
+### Documents
+
+| Method | Endpoint | Permission | Description |
+|--------|----------|------------|-------------|
+| `POST` | `/documents/upload` | `ai:embed` | Upload and index a PDF document |
+| `GET` | `/documents/` | `ai:search` | List user's uploaded documents |
+| `DELETE` | `/documents/{document_id}` | `ai:embed` | Delete document and vector embeddings |
+| `POST` | `/documents/query` | `ai:search` | Query via LangGraph (RAG, FAQ, weather, support tools) |
+| `GET` | `/documents/{document_id}/export` | `ai:search` | Export extracted document text |
 
 **Query body example:**
 
@@ -368,214 +361,171 @@ Default permissions on register: `ai:chat`, `ai:embed`, `ai:search`.
   "document_id": null,
   "session_id": "optional-session-uuid",
   "stream": false,
-  "faq_mode": true
+  "faq_mode": true,
+  "weather_mode": false
 }
 ```
 
-### Customer Support (Chat) — `/api/chat`
+### FAQ
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/chat/` | Non-streaming chat (requires `ai:chat`) |
-| `POST` | `/chat/stream` | SSE streaming chat with persona |
-| `GET` | `/chat/sessions` | List chat sessions |
-| `POST` | `/chat/sessions` | Create chat session |
-| `PATCH` | `/chat/sessions/{session_id}` | Rename session |
-| `DELETE` | `/chat/sessions/{session_id}` | Delete session + Redis cache |
-| `GET` | `/chat/history/{session_id}` | Message history |
-| `GET` | `/chat/sessions/{session_id}/export` | Plain-text export |
+FAQ queries use the documents query endpoint with `faq_mode: true`. The LangGraph agent routes to company policy retrieval against uploaded FAQ documents (e.g. `Company_FAQ.pdf`).
 
-### Conversations — `/api/conversations`
+| Method | Endpoint | Permission | Description |
+|--------|----------|------------|-------------|
+| `POST` | `/documents/query` | `ai:search` | Ask FAQ questions (`faq_mode: true`) |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/conversations` | Create support conversation (`title`, `persona`) |
-| `POST` | `/conversations/{id}/messages` | Add user message → run agent → save assistant reply |
-| `GET` | `/conversations/{id}` | Full conversation history |
-| `DELETE` | `/conversations/{id}` | Delete conversation and messages |
+### Weather
 
-**Add message body:**
+Weather queries use the documents query endpoint with `weather_mode: true`, or natural-language detection by the agent router.
 
-```json
-{
-  "role": "user",
-  "content": "Where is my order ORD-10002?"
+| Method | Endpoint | Permission | Description |
+|--------|----------|------------|-------------|
+| `POST` | `/documents/query` | `ai:search` | Get live weather (`weather_mode: true`) |
+
+Example: `"What's the weather in Delhi?"`
+
+### Help & Support (Jira)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/jira/create` | Yes | Create a new support issue |
+| `GET` | `/jira/issues` | Yes | List issues for the configured project |
+| `GET` | `/jira/{issue_key}` | Yes | Get issue details |
+| `POST` | `/jira/search` | Yes | Search issues by query |
+| `POST` | `/jira/assign` | Yes | Assign an issue to a user |
+| `POST` | `/jira/status` | Yes | Update issue status |
+
+### Conversations
+
+| Method | Endpoint | Permission | Description |
+|--------|----------|------------|-------------|
+| `POST` | `/conversations` | `ai:chat` | Create a support conversation |
+| `POST` | `/conversations/{id}/messages` | `ai:chat` | Send message → agent responds |
+| `GET` | `/conversations/{id}` | `ai:chat` | Get full conversation history |
+| `DELETE` | `/conversations/{id}` | `ai:chat` | Delete conversation and messages |
+
+### Health Check
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/` | No | API health status `{ "status": "ok" }` |
+
+---
+
+## 📸 Screenshots
+
+| Screen | Preview |
+|--------|---------|
+| Home / Dashboard | ![Home](docs/images/home.png) |
+| AI Chat | ![Chat](docs/images/chat.png) |
+| Login | ![Login](docs/images/login.png) |
+| Swagger API Docs | ![Swagger](docs/images/swagger.png) |
+
+> Add screenshots to `docs/images/` and they will render automatically on GitHub.
+
+---
+
+## ☁️ Deployment
+
+### Docker & Docker Compose
+
+The recommended deployment path is containerized:
+
+1. Provision a server (e.g. AWS EC2 with Ubuntu 22.04+).
+2. Install Docker and Docker Compose.
+3. Clone the repository and configure `Backend/.env` with production secrets.
+4. Set `POSTGRES_PASSWORD` and run `docker compose up -d --build`.
+5. Verify with `docker compose ps` and curl `http://<server-ip>:8000/`.
+
+### AWS EC2
+
+Typical EC2 setup:
+
+- **Instance:** `t3.medium` or larger (embedding model requires ~2 GB RAM)
+- **Security groups:** Allow inbound `80`, `443`, and restrict `5432`/`6379` to private network
+- **Storage:** EBS volume for Docker volumes (`postgres_data`, `redis_data`)
+
+### Reverse Proxy & SSL
+
+Place Nginx or Caddy in front of the containers:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /api {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_buffering off;          # Required for SSE streaming
+    }
 }
 ```
 
-Assistant metadata stored: `intent`, `tool_used`, `response_time_ms`.
-
-### Health
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | `{ "status": "ok" }` |
+Obtain certificates with [Let's Encrypt](https://letsencrypt.org/) (`certbot`) and redirect HTTP → HTTPS.
 
 ---
 
-## LangGraph Workflow
+## 🔮 Future Enhancements
 
-The customer support agent is compiled in `Backend/app/graph/graph.py` with **MemorySaver** checkpointing (`thread_id = doc:{session_id}`).
-
-### Query modes (`AgentState.query_mode`)
-
-| Mode | Entry node | Purpose |
-|------|------------|---------|
-| `normal_chat` | `normal_chat` | General conversation |
-| `single_document` | `single_document_search` | Search one document |
-| `multi_document` | `multi_document_search` | Search all user documents |
-| `compare` | `compare_documents` | Compare two documents |
-| `metadata` | `metadata` | Document info / page listing |
-| `support` | `support_entry` | Support tool routing |
-| `company_faq` | `company_faq_search` | Company FAQ policy RAG |
-| `weather` | `weather` | Current weather via OpenWeatherMap |
-
-### Flow (simplified)
-
-1. **`classify_route`** — LLM + heuristics pick query mode; detect support requests, FAQ policy questions, and weather prompts.
-2. **Mode entry node** — Proactive RAG search, support entry, or weather fetch as needed.
-3. **`router`** — Gemini function calling; enqueues tools (`search_document`, `check_order_status`, `get_weather`, etc.).
-4. **Tool nodes** — Execute RAG, support, or weather tools; return to `router` until done.
-5. **`generate_answer`** — Final Gemini response with **References** footer and structured `sources`.
-
-### RAG tools (router)
-
-- `search_document`
-- `compare_documents`
-- `get_document_info`
-- `list_pages`
-
-### Support tools (router)
-
-- `classify_intent`
-- `check_order_status`
-- `create_ticket`
-- `escalate_to_human`
-
-### Weather tools (router + weather node)
-
-- `get_weather` — Current conditions for a city (`weather_service.py` → OpenWeatherMap)
-
-Gemini declarations: `Backend/app/graph/weather_tool_defs.py`. The **`weather`** node proactively calls `get_weather`, injects structured results into the conversation, then routes to **`router`** → **`generate_answer`** for a natural reply.
+- **Token-by-token streaming** for document/RAG query responses (chat streaming already supported)
+- **Voice chat** — Speech-to-text input and text-to-speech output
+- **Multi-language support** — i18n for UI and multilingual model prompts
+- **Analytics dashboard** — Usage metrics, query trends, and response quality
+- **Admin dashboard** — User management, permission assignment, document moderation
+- **Kubernetes deployment** — Helm charts for scalable container orchestration
+- **CI/CD pipeline** — GitHub Actions for test, build, and deploy automation
+- **Monitoring** — Prometheus metrics and Grafana dashboards for API latency and error rates
 
 ---
 
-## RAG Pipeline
+## 🤝 Contributing
 
-Implemented in `Backend/app/services/rag_service.py`.
+Contributions are welcome! Please follow these steps:
 
-1. **Upload** — PDF saved under `Backend/uploads/`; metadata stored in PostgreSQL `documents` table.
-2. **Extract** — PyMuPDF extracts text per page.
-3. **Chunk** — `RecursiveCharacterTextSplitter` (512 chars, 50 overlap).
-4. **Embed** — `SentenceTransformer('all-MiniLM-L6-v2')`.
-5. **Store** — ChromaDB persistent client (`./documents_chroma_db`), **one collection per user** (`user_{user_id}`).
-6. **Search** — Cosine similarity query; optional `document_id` metadata filter.
-7. **Cite** — Retrieved chunks flow into `AgentState.retrieved_chunks` and appear in API `sources` with filename, page, snippet, and similarity.
+1. **Fork** the repository on GitHub.
+2. **Create a branch** for your feature or fix:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Make your changes** and ensure tests pass:
+   ```bash
+   cd Backend && pytest
+   cd Frontend && npm run lint
+   ```
+4. **Commit** with a clear, descriptive message.
+5. **Push** to your fork and open a **Pull Request** describing what changed and why.
 
-**Company FAQ** (`company_faq.py`) resolves `Company_FAQ.pdf` by filename and scopes policy questions to that document automatically.
-
----
-
-## Customer Support Tools
-
-Mock implementations in `Backend/app/services/support_tools.py` — designed to be swapped for real integrations (Jira, OMS, escalation queues).
-
-| Tool | Description |
-|------|-------------|
-| **`classify_intent`** | Keyword classifier → FAQ, Order Status, Refund, Complaint, Technical Support, General Inquiry |
-| **`check_order_status`** | Mock lookup for `ORD-*` IDs |
-| **`create_ticket`** | Mock ticket creation → `SUP-{n}` |
-| **`escalate_to_human`** | Mock escalation → `ESC-{n}` |
-
-Gemini function declarations live in `Backend/app/graph/support_tool_defs.py`. The router uses `FunctionCallingConfigMode.ANY` on support paths so tools are invoked instead of hallucinating unavailable actions.
-
-**Disambiguation:** Policy questions (e.g. “refund policy”) route to FAQ RAG; action requests (e.g. “I want a refund”) route to support tools.
+Please keep PRs focused, follow existing code style, and update documentation when adding new endpoints or environment variables.
 
 ---
 
-## Screenshots
+## 📄 License
 
-> Add screenshots to `docs/screenshots/` and replace the placeholders below.
-
-| Screenshot | Description |
-|--------------|-------------|
-| ![Chat UI](docs/screenshots/chat.png) | Main chat interface with sessions sidebar |
-| ![Documents](docs/screenshots/documents.png) | Document upload and scoped search |
-| ![Company FAQ](docs/screenshots/faq.png) | Company FAQ mode with quick-action chips |
-| ![API Docs](docs/screenshots/swagger.png) | FastAPI Swagger UI at `/docs` |
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
 ---
 
-## Testing
+## 👤 Author
 
-### pytest
-
-From `Backend/`:
-
-```bash
-pytest
-```
-
-Run specific suites:
-
-```bash
-pytest tests/test_auth.py -v
-pytest tests/test_chat.py tests/test_chatbot.py -v
-pytest tests/test_documents.py -v
-pytest tests/test_conversations.py -v
-```
-
-Tests use **SQLite** (`tests/conftest.py`) with dependency overrides — no PostgreSQL required for CI/local test runs. Conversation tests **mock** the LangGraph agent (`invoke_support_agent`) to avoid real LLM calls.
-
-| Test file | Coverage |
-|-----------|----------|
-| `test_auth.py` | Register, login, `/me`, health |
-| `test_chat.py` | Auth guards, session CRUD |
-| `test_chatbot.py` | Streaming, export, personas |
-| `test_documents.py` | Upload, list, query, isolation |
-| `test_conversations.py` | Conversation CRUD + messaging |
-
-### Coverage (optional)
-
-`pytest-cov` is not pinned in `requirements.txt`. To measure coverage:
-
-```bash
-pip install pytest-cov
-pytest --cov=app --cov-report=term-missing
-```
+| | |
+|---|---|
+| **Name** | Your Name |
+| **GitHub** | [@your-github-username](https://github.com/your-github-username) |
+| **LinkedIn** | [Your LinkedIn Profile](https://linkedin.com/in/your-profile) |
+| **Email** | your.email@example.com |
 
 ---
 
-## Future Enhancements
-
-Based on current code comments and architecture gaps:
-
-- Replace mock support tools with real **order management**, **ticketing** (Jira/Zendesk), and **human escalation** queue APIs.
-- Swap the keyword **intent** classifier for an LLM-based model.
-- **httpOnly cookie** auth instead of `localStorage` JWT (noted in frontend rules).
-- **Token refresh** and production-hardened auth.
-- Pin missing runtime dependencies (`chromadb`, `redis`, etc.) explicitly in `requirements.txt`.
-- Markdown rendering for AI responses, session sidebar for multi-FAQ sources, and mobile layout polish.
-
----
-
-## License
-
-No license file is included in this repository. Add a `LICENSE` file (e.g. MIT) before public distribution.
-
----
-
-## Quick Reference
-
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| OpenAPI docs | http://localhost:8000/docs |
-| Health check | http://localhost:8000/ |
-
-**Default test credentials:** Register a new account via the UI or `POST /api/auth/register`.
-
-**Sample mock orders:** `ORD-10001`, `ORD-10002`, `ORD-10003`
-
-**Company FAQ document:** Upload `Company_FAQ.pdf` for automatic policy RAG.
+<p align="center">
+  Built with FastAPI · Next.js · LangGraph · Gemini · ChromaDB
+</p>
